@@ -4,6 +4,7 @@
 #include <bgame/reloadable.h>
 #include <stddef.h>
 #include <string.h>
+#include <barena.h>
 
 #ifdef _MSC_VER
 #define BGAME_MAX_ALIGN_TYPE double
@@ -17,6 +18,7 @@ typedef struct bgame_allocator_s {
 } bgame_allocator_t;
 
 extern bgame_allocator_t* bgame_default_allocator;
+extern barena_pool_t* bgame_arena_pool;
 
 static inline void*
 bgame_realloc(void* ptr, size_t size, bgame_allocator_t* allocator) {
