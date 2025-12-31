@@ -22,7 +22,12 @@ bgame_collision_shape_load(
 
 	const char* type = cf_json_get_string(cf_json_get(root, "type"));
 
-	if (strcmp(type, "polygon")) {
+	if (type == NULL) {
+		BLOG_ERROR("Invalid shape file");
+		goto end;
+	}
+
+	if (strcmp(type, "polygon") == 0) {
 		shape->type = CF_SHAPE_TYPE_POLY;
 		CF_JVal jvertices = cf_json_get(root, "vertices");
 
