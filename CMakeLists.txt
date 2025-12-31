@@ -14,6 +14,7 @@ set(SOURCES
 	"src/asset/binary.c"
 	"src/asset/font.c"
 	"src/asset/shader.c"
+	"src/asset/collision_shape.c"
 	"src/dj.c"
 	"src/ui.c"
 	"src/ui/9patch.c"
