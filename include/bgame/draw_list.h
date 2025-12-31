@@ -1,13 +1,14 @@
 #ifndef BGAME_DRAW_LIST_H
 #define BGAME_DRAW_LIST_H
 
-#include "ecs.h"
 #include "allocator/frame.h"
 #include <stdlib.h>
+#include <stdint.h>
+#include <bent.h>
 
 typedef struct {
     int sort_key;
-    ecs_id_t entity_id;
+    bent_t entity_id;
 } bgame_draw_item_t;
 
 typedef struct {
