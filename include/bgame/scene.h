@@ -34,6 +34,9 @@ void
 bgame_switch_scene(const char* name);
 
 void
+bgame_reload_scene(void);
+
+void
 bgame_push_scene(const char* name);
 
 void

@@ -70,6 +70,14 @@ bgame_switch_scene(const char* name) {
 }
 
 void
+bgame_reload_scene(void) {
+	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
+	bgame_scene_mgr.next_scene.scene = current_entry->scene;
+	bgame_scene_mgr.next_scene.name = current_entry->name;
+	bgame_scene_mgr.scene_op = BGAME_SWITCH_SCENE;
+}
+
+void
 bgame_push_scene(const char* name) {
 	if (bgame_scene_mgr.current_scene_index >= BGAME_SCENE_STACK_SIZE - 1) {
 		BLOG_ERROR("Scene stack is full");
