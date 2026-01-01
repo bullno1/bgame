@@ -39,11 +39,11 @@ bgame_collision_shape_load(
 
 		for (int i = 0; i < num_verts; ++i) {
 			CF_JVal jvertex = cf_json_array_get(jvertices, i);
-			shape->poly.verts[i].x = cf_json_get_float(cf_json_array_get(jvertex, 0));
-			shape->poly.verts[i].y = cf_json_get_float(cf_json_array_get(jvertex, 1));
+			shape->data.poly.verts[i].x = cf_json_get_float(cf_json_array_get(jvertex, 0));
+			shape->data.poly.verts[i].y = cf_json_get_float(cf_json_array_get(jvertex, 1));
 		}
-		shape->poly.count = num_verts;
-		cf_make_poly(&shape->poly);
+		shape->data.poly.count = num_verts;
+		cf_make_poly(&shape->data.poly);
 		result = BGAME_ASSET_LOADED;
 	} else {
 		BLOG_ERROR("Invalid shape type");

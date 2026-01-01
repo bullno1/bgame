@@ -16,6 +16,7 @@ set(SOURCES
 	"src/asset/shader.c"
 	"src/asset/collision_shape.c"
 	"src/dj.c"
+	"src/collision.c"
 	"src/ui.c"
 	"src/ui/9patch.c"
 	"src/ui/rich_text.c"
