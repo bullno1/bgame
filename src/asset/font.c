@@ -7,17 +7,13 @@ typedef struct {
 	const char* name;
 } bgame_font_t;
 
-static bgame_asset_load_result_t
+static bool
 bgame_font_load(
 	bgame_asset_bundle_t* bundle,
 	void* asset,
-	const char* path,
-	const void* args
+	const char* path
 ) {
 	bgame_font_t* font = asset;
-	if (!bgame_asset_source_changed(bundle, font)) {
-		return BGAME_ASSET_UNCHANGED;
-	}
 
 	if (font->name != NULL) {
 		cf_destroy_font(font->name);
@@ -27,10 +23,10 @@ bgame_font_load(
 	CF_Result result = cf_make_font(path, path);
 	if (result.code == CF_RESULT_SUCCESS) {
 		font->name = sintern(path);
-		return BGAME_ASSET_LOADED;
+		return true;
 	} else {
 		BLOG_ERROR("Could not load font: %s", result.details != NULL ? result.details : "No details");
-		return BGAME_ASSET_ERROR;
+		return false;
 	}
 }
 
@@ -54,7 +50,7 @@ BGAME_ASSET_TYPE(font) = {
 
 const char*
 bgame_load_font(struct bgame_asset_bundle_s* bundle, const char* path) {
-	bgame_font_t* asset = bgame_asset_load(bundle, &font, path, NULL);
+	bgame_font_t* asset = bgame_asset_load(bundle, &font, path);
 	if (asset != NULL && asset->name != NULL) {
 		return asset->name;
 	} else {

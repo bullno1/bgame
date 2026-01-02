@@ -60,6 +60,6 @@ bgame_load_shader(
 	const char* path,
 	const struct CF_DrawShaderBytecode* bytecode
 ) {
-	bgame_shader_t* result = bgame_asset_load(bundle, &shader, path, bytecode);
+	bgame_shader_t* result = bgame_asset_load(bundle, &shader, path);
 	return result != NULL ? result->handle : (CF_Shader){ 0 };
 }

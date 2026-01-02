@@ -3,20 +3,15 @@
 #include <blog.h>
 #include <cute.h>
 
-static bgame_asset_load_result_t
+static bool
 bgame_collision_shape_load(
 	bgame_asset_bundle_t* bundle,
 	void* asset,
-	const char* path,
-	const void* args
+	const char* path
 ) {
 	bgame_collision_shape_t* shape = asset;
 
-	if (!bgame_asset_source_changed(bundle, asset)) {
-		return BGAME_ASSET_UNCHANGED;
-	}
-
-	bgame_asset_load_result_t result = BGAME_ASSET_ERROR;
+	bool result = false;
 	CF_JDoc jdoc = cf_make_json_from_file(path);
 	CF_JVal root = cf_json_get_root(jdoc);
 
@@ -44,7 +39,7 @@ bgame_collision_shape_load(
 		}
 		shape->data.poly.count = num_verts;
 		cf_make_poly(&shape->data.poly);
-		result = BGAME_ASSET_LOADED;
+		result = true;
 	} else {
 		BLOG_ERROR("Invalid shape type");
 		goto end;
@@ -73,5 +68,5 @@ BGAME_ASSET_TYPE(collision_shape) = {
 
 bgame_collision_shape_t*
 bgame_load_collision_shape(struct bgame_asset_bundle_s* bundle, const char* path) {
-	return bgame_asset_load(bundle, &collision_shape, path, NULL);
+	return bgame_asset_load(bundle, &collision_shape, path);
 }
