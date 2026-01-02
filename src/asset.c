@@ -44,7 +44,8 @@ struct bgame_asset_bundle_s {
 #endif
 };
 
-AUTOLIST_DEFINE(bgame_asset_type_list)
+AUTOLIST_DEFINE(bgame__asset_type_list)
+AUTOLIST_DEFINE(bgame__asset_list)
 
 static bool bgame_asset_initialized = false;
 BGAME_VAR(bgame_asset_registry_t, bgame_asset_registry) = { 0 };
@@ -61,7 +62,7 @@ bgame_asset_sys_init(void) {
 	hconfig.removable = false;
 	bhash_reinit(&bgame_asset_registry, hconfig);
 
-	AUTOLIST_FOREACH(itr, bgame_asset_type_list) {
+	AUTOLIST_FOREACH(itr, bgame__asset_type_list) {
 		bgame_asset_type_t* type = itr->value_addr;
 		const char* type_name = sintern(type->name);
 		bhash_put(&bgame_asset_registry, type_name, type);
@@ -193,7 +194,7 @@ bgame_asset_cleanup(bgame_asset_bundle_t** bundle_ptr) {
 }
 
 int
-bgame_asset_version(bgame_asset_bundle_t* bundle, void* asset_data) {
+bgame_asset_version(void* asset_data) {
 	bgame_asset_t* asset = BCONTAINER_OF(asset_data, bgame_asset_t, data);
 	return asset->loaded_version;
 }
@@ -263,6 +264,12 @@ bgame_asset_load(
 	asset->key = key;
 
 	return asset->data;
+}
+
+void*
+bgame_asset_load_def(bgame_asset_bundle_t* bundle, bgame_asset_def_t* def) {
+	void** var_ptr = (void**)def->var;
+	return *var_ptr = bgame_asset_load(bundle, def->type, def->meta->path);
 }
 
 void
