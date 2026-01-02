@@ -13,7 +13,7 @@
 	AUTOLIST_ENTRY(bgame__asset_type_list, bgame_asset_type_t, NAME)
 #else
 #	define BGAME_ASSET_TYPE(NAME) \
-	static bgame_asset_type_t NAME
+	bgame_asset_type_t NAME
 #endif
 
 #define BGAME_DEFINE_ASSET(NAME, TYPE, DATA_TYPE) \
