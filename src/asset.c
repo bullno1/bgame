@@ -39,6 +39,7 @@ struct bgame_asset_bundle_s {
 	bgame_allocator_t* allocator;
 
 #if BGAME_RELOADABLE
+	int code_version;  // To replace watch callback
 	bresmon_t* monitor;
 #endif
 };
@@ -47,11 +48,13 @@ AUTOLIST_DEFINE(bgame_asset_type_list)
 
 static bool bgame_asset_initialized = false;
 BGAME_VAR(bgame_asset_registry_t, bgame_asset_registry) = { 0 };
+BGAME_VAR(int, bgame_asset_code_version) = 0;
 
 static void
 bgame_asset_sys_init(void) {
 	if (bgame_asset_initialized) { return; }
 	bgame_asset_initialized = true;
+	++bgame_asset_code_version;
 
 	bhash_config_t hconfig = bhash_config_default();
 	hconfig.memctx = bgame_default_allocator;
@@ -142,6 +145,7 @@ bgame_asset_init(bgame_asset_bundle_t** bundle_ptr, bgame_allocator_t* allocator
 		*bundle = (bgame_asset_bundle_t){ .allocator = allocator };
 #if BGAME_RELOADABLE
 		bundle->monitor = bresmon_create(allocator);
+		bundle->code_version = bgame_asset_code_version;
 #endif
 		*bundle_ptr = bundle;
 	}
@@ -165,6 +169,8 @@ bgame_asset_destroy(bgame_asset_bundle_t* bundle, bgame_asset_t* asset) {
 
 void
 bgame_asset_cleanup(bgame_asset_bundle_t** bundle_ptr) {
+	bgame_asset_sys_init();
+
 	bgame_asset_bundle_t* bundle = *bundle_ptr;
 	if (bundle == NULL) { return; }
 
@@ -289,6 +295,17 @@ bgame_asset_free(bgame_asset_bundle_t* bundle, void* ptr) {
 void
 bgame_asset_check_bundle(bgame_asset_bundle_t* bundle) {
 #if BGAME_RELOADABLE
+	bgame_asset_sys_init();
+
+	if (bundle->code_version != bgame_asset_code_version) {
+		bhash_index_t num_assets = bhash_len(&bundle->assets);
+		for (bhash_index_t i = 0; i < num_assets; ++i) {
+			bgame_asset_t* asset = bundle->assets.values[i];
+			bresmon_set_watch_callback(asset->watch, bgame_asset_on_file_changed, asset);
+		}
+		bundle->code_version = bgame_asset_code_version;
+	}
+
 	if (bresmon_check(bundle->monitor, false) > 0) {
 		bhash_index_t num_assets = bhash_len(&bundle->assets);
 		for (bhash_index_t i = 0; i < num_assets; ++i) {
