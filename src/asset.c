@@ -186,6 +186,12 @@ bgame_asset_cleanup(bgame_asset_bundle_t** bundle_ptr) {
 	*bundle_ptr = NULL;
 }
 
+int
+bgame_asset_version(bgame_asset_bundle_t* bundle, void* asset_data) {
+	bgame_asset_t* asset = BCONTAINER_OF(asset_data, bgame_asset_t, data);
+	return asset->loaded_version;
+}
+
 void*
 bgame_asset_load(
 	bgame_asset_bundle_t* bundle,

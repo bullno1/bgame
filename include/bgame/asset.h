@@ -48,6 +48,9 @@ bgame_asset_load(
 	const char* path
 );
 
+int
+bgame_asset_version(bgame_asset_bundle_t* bundle, void* asset);
+
 void
 bgame_asset_unload(bgame_asset_bundle_t* bundle, void* asset);
 
