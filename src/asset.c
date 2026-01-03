@@ -269,6 +269,7 @@ bgame_asset_load(
 void*
 bgame_asset_load_def(bgame_asset_bundle_t* bundle, bgame_asset_def_t* def) {
 	void** var_ptr = (void**)def->var;
+	BLOG_DEBUG("Loading predefined asset: %s", def->name);
 	return *var_ptr = bgame_asset_load(bundle, def->type, def->meta->path);
 }
 

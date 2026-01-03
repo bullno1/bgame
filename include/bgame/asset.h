@@ -21,6 +21,7 @@
 	extern bgame_asset_meta_t NAME##_meta; \
 	static bgame_asset_def_t NAME##_def = { \
 		.var = &NAME, \
+		.name = #NAME, \
 		.meta = &NAME##_meta, \
 		.type = &TYPE, \
 	}; \
@@ -61,6 +62,7 @@ typedef struct {
 
 typedef struct {
 	void* var;
+	const char* name;
 	bgame_asset_type_t* type;
 	bgame_asset_meta_t* meta;
 } bgame_asset_def_t;
