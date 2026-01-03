@@ -181,7 +181,7 @@ bgame_scene_update_internal(bool run_update) {
 			}
 			current_scene = current_entry->scene;
 
-			if (current_scene != NULL && current_scene->init != NULL) {
+			if (current_scene != NULL && current_scene->resume != NULL) {
 				BLOG_INFO("Resuming scene `%s`", current_entry->name);
 				bgame_scene_mgr.scene_state = BGAME_SCENE_RESUMING;
 				current_scene->resume();

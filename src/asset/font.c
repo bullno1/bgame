@@ -3,10 +3,6 @@
 #include <cute_draw.h>
 #include <blog.h>
 
-typedef struct {
-	const char* name;
-} bgame_font_t;
-
 static bool
 bgame_font_load(
 	bgame_asset_bundle_t* bundle,
