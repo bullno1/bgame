@@ -211,6 +211,10 @@ bgame_asset_load(
 		.path = bgame_asset_strref(path),
 	};
 
+#if !BGAME_RELOADABLE
+	bhash_put(&bgame_asset_registry, type_name, type);
+#endif
+
 	bhash_index_t index = bhash_find(&bundle->assets, asset_key);
 	if (bhash_is_valid(index)) {
 		bgame_asset_t* asset = bundle->assets.values[index];
