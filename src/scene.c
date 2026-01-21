@@ -11,7 +11,6 @@
 #endif
 
 typedef struct {
-	bgame_scene_t* scene;
 	void* data;
 	const char* name;
 } bgame_scene_entry_t;
@@ -38,6 +37,7 @@ AUTOLIST_DEFINE(bgame_scene_list)
 
 static inline bgame_scene_t*
 bgame_find_scene(const char* name) {
+	if (name == NULL) { return NULL; }
 	size_t name_len = strlen(name);
 	AUTOLIST_FOREACH(entry, bgame_scene_list) {
 		if (
@@ -64,7 +64,6 @@ bgame_switch_scene(const char* name) {
 		return;
 	}
 
-	bgame_scene_mgr.next_scene.scene = scene;
 	bgame_scene_mgr.next_scene.name = sintern(name);
 	bgame_scene_mgr.scene_op = BGAME_SWITCH_SCENE;
 }
@@ -72,7 +71,6 @@ bgame_switch_scene(const char* name) {
 void
 bgame_reload_scene(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_mgr.next_scene.scene = current_entry->scene;
 	bgame_scene_mgr.next_scene.name = current_entry->name;
 	bgame_scene_mgr.scene_op = BGAME_SWITCH_SCENE;
 }
@@ -90,7 +88,6 @@ bgame_push_scene(const char* name) {
 		return;
 	}
 
-	bgame_scene_mgr.next_scene.scene = scene;
 	bgame_scene_mgr.next_scene.name = sintern(name);
 	bgame_scene_mgr.scene_op = BGAME_PUSH_SCENE;
 }
@@ -103,7 +100,7 @@ bgame_pop_scene(void) {
 bgame_scene_t*
 bgame_current_scene(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	return current_entry->scene;
+	return bgame_find_scene(current_entry->name);
 }
 
 void*
@@ -120,7 +117,7 @@ bgame_current_scene_state(void) {
 static void
 bgame_scene_update_internal(bool run_update) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_t* current_scene = current_entry->scene;
+	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
 
 	switch (bgame_scene_mgr.scene_op) {
 		case BGAME_RUN_SCENE:
@@ -134,7 +131,7 @@ bgame_scene_update_internal(bool run_update) {
 			}
 
 			*current_entry = bgame_scene_mgr.next_scene;
-			current_scene = bgame_scene_mgr.next_scene.scene;
+			current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
 			bgame_scene_mgr.next_scene = (bgame_scene_entry_t){ 0 };
 
 			if (current_scene != NULL && current_scene->init != NULL) {
@@ -155,7 +152,7 @@ bgame_scene_update_internal(bool run_update) {
 
 			current_entry = &bgame_scene_mgr.scene_stack[++bgame_scene_mgr.current_scene_index];
 			*current_entry = bgame_scene_mgr.next_scene;
-			bgame_scene_t* current_scene = bgame_scene_mgr.next_scene.scene;
+			bgame_scene_t* current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
 			bgame_scene_mgr.next_scene = (bgame_scene_entry_t){ 0 };
 
 			if (current_scene != NULL && current_scene->init != NULL) {
@@ -179,7 +176,7 @@ bgame_scene_update_internal(bool run_update) {
 			if (bgame_scene_mgr.current_scene_index > 0) {
 				current_entry = &bgame_scene_mgr.scene_stack[--bgame_scene_mgr.current_scene_index];
 			}
-			current_scene = current_entry->scene;
+			current_scene = bgame_find_scene(current_entry->name);
 
 			if (current_scene != NULL && current_scene->resume != NULL) {
 				BLOG_INFO("Resuming scene `%s`", current_entry->name);
@@ -210,7 +207,7 @@ bgame_scene_update(void) {
 void
 bgame_scene_before_reload(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_t* current_scene = current_entry->scene;
+	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
 	if (current_scene != NULL && current_scene->before_reload != NULL) {
 		BLOG_INFO("Saving scene `%s`", current_entry->name);
 		current_scene->before_reload();
@@ -220,11 +217,8 @@ bgame_scene_before_reload(void) {
 void
 bgame_scene_after_reload(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	if (current_entry->name != NULL) {
-		current_entry->scene = bgame_find_scene(current_entry->name);
-	}
 
-	bgame_scene_t* current_scene = current_entry->scene;
+	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
 	if (current_scene != NULL && current_scene->after_reload != NULL) {
 		BLOG_INFO("Loading scene `%s`", current_entry->name);
 		current_scene->after_reload();
