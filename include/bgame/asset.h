@@ -3,6 +3,7 @@
 
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
+#include <bgame/str.h>
 #include <autolist.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -85,6 +86,12 @@ bgame_asset_load_def(bgame_asset_bundle_t* bundle, bgame_asset_def_t* def);
 
 int
 bgame_asset_version(void* asset);
+
+bgame_str_t
+bgame_asset_path(void* asset);
+
+const bgame_asset_type_t*
+bgame_asset_type(void* asset);
 
 void
 bgame_asset_unload(bgame_asset_bundle_t* bundle, void* asset);

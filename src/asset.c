@@ -199,6 +199,18 @@ bgame_asset_version(void* asset_data) {
 	return asset->loaded_version;
 }
 
+bgame_str_t
+bgame_asset_path(void* asset_data) {
+	bgame_asset_t* asset = BCONTAINER_OF(asset_data, bgame_asset_t, data);
+	return asset->key.path;
+}
+
+const bgame_asset_type_t*
+bgame_asset_type(void* asset_data) {
+	bgame_asset_t* asset = BCONTAINER_OF(asset_data, bgame_asset_t, data);
+	return bgame_asset_lookup_type(asset->key.type);
+}
+
 void*
 bgame_asset_load(
 	bgame_asset_bundle_t* bundle,
