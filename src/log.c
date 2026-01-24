@@ -19,6 +19,7 @@ bgame_log_init(void) {
 #if BGAME_RELOADABLE
 	level = BLOG_LEVEL_TRACE;
 #endif
+	bgame_log_options.file = stdout;
 	blog_add_file_logger(level, &bgame_log_options);
 }
 

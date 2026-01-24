@@ -152,7 +152,7 @@ bgame_scene_update_internal(bool run_update) {
 
 			current_entry = &bgame_scene_mgr.scene_stack[++bgame_scene_mgr.current_scene_index];
 			*current_entry = bgame_scene_mgr.next_scene;
-			bgame_scene_t* current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
+			current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
 			bgame_scene_mgr.next_scene = (bgame_scene_entry_t){ 0 };
 
 			if (current_scene != NULL && current_scene->init != NULL) {
