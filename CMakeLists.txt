@@ -1,3 +1,6 @@
+cmake_minimum_required(VERSION 3.15)
+project(bgame)
+
 set(SOURCES
 	"src/libs.c"
 	"src/log.c"
