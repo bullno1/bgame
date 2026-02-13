@@ -13,6 +13,7 @@
 typedef struct {
 	void* data;
 	const char* name;
+	bgame_scene_t* scene;
 } bgame_scene_entry_t;
 
 typedef enum {
@@ -100,7 +101,7 @@ bgame_pop_scene(void) {
 bgame_scene_t*
 bgame_current_scene(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	return bgame_find_scene(current_entry->name);
+	return current_entry->scene;
 }
 
 void*
@@ -117,7 +118,7 @@ bgame_current_scene_state(void) {
 static void
 bgame_scene_update_internal(bool run_update) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
+	bgame_scene_t* current_scene = current_entry->scene;
 
 	switch (bgame_scene_mgr.scene_op) {
 		case BGAME_RUN_SCENE:
@@ -131,7 +132,7 @@ bgame_scene_update_internal(bool run_update) {
 			}
 
 			*current_entry = bgame_scene_mgr.next_scene;
-			current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
+			current_entry->scene = current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
 			bgame_scene_mgr.next_scene = (bgame_scene_entry_t){ 0 };
 
 			if (current_scene != NULL && current_scene->init != NULL) {
@@ -152,7 +153,7 @@ bgame_scene_update_internal(bool run_update) {
 
 			current_entry = &bgame_scene_mgr.scene_stack[++bgame_scene_mgr.current_scene_index];
 			*current_entry = bgame_scene_mgr.next_scene;
-			current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
+			current_entry->scene = current_scene = bgame_find_scene(bgame_scene_mgr.next_scene.name);
 			bgame_scene_mgr.next_scene = (bgame_scene_entry_t){ 0 };
 
 			if (current_scene != NULL && current_scene->init != NULL) {
@@ -176,7 +177,7 @@ bgame_scene_update_internal(bool run_update) {
 			if (bgame_scene_mgr.current_scene_index > 0) {
 				current_entry = &bgame_scene_mgr.scene_stack[--bgame_scene_mgr.current_scene_index];
 			}
-			current_scene = bgame_find_scene(current_entry->name);
+			current_entry->scene = current_scene = bgame_find_scene(current_entry->name);
 
 			if (current_scene != NULL && current_scene->resume != NULL) {
 				BLOG_INFO("Resuming scene `%s`", current_entry->name);
@@ -207,7 +208,7 @@ bgame_scene_update(void) {
 void
 bgame_scene_before_reload(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
+	bgame_scene_t* current_scene = current_entry->scene;
 	if (current_scene != NULL && current_scene->before_reload != NULL) {
 		BLOG_INFO("Saving scene `%s`", current_entry->name);
 		current_scene->before_reload();
@@ -218,7 +219,7 @@ void
 bgame_scene_after_reload(void) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
 
-	bgame_scene_t* current_scene = bgame_find_scene(current_entry->name);
+	bgame_scene_t* current_scene = current_entry->scene = bgame_find_scene(current_entry->name);
 	if (current_scene != NULL && current_scene->after_reload != NULL) {
 		BLOG_INFO("Loading scene `%s`", current_entry->name);
 		current_scene->after_reload();
