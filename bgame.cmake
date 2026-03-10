@@ -33,3 +33,12 @@ function (add_bgame_app NAME SOURCES)
 endfunction ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
+set_target_properties(physfs PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    C_EXTENSIONS OFF
+)
+target_compile_definitions(physfs PRIVATE _POSIX_C_SOURCE=200112L)
+get_target_property(S2N_OPTS s2n COMPILE_OPTIONS)
+list(REMOVE_ITEM S2N_OPTS "-std=gnu99")
+set_target_properties(s2n PROPERTIES COMPILE_OPTIONS "${S2N_OPTS}")

@@ -45,7 +45,7 @@ bgame_sprite_load(
 		} else {
 			// Preserve transformation
 			CF_V2 scale = sprite->scale;
-			*sprite = cf_sprite_reload(sprite);
+			cf_sprite_reload(sprite);
 			sprite->scale = scale;
 			return true;
 		}
