@@ -5,10 +5,13 @@
 #include "reloadable.h"
 #include "app.h"
 
+extern const char* bgame_entry_file;
+
 #if BGAME_RELOADABLE
 
 #define BGAME_ENTRYPOINT(APP) \
 	void remodule_entry(remodule_op_t op, void* userdata) { \
+		bgame_entry_file = __FILE__; \
 		bgame_remodule(APP, op, userdata); \
 	}
 
@@ -19,6 +22,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata);
 
 #define BGAME_ENTRYPOINT(APP) \
 	int bgame_entry(int argc, const char** argv) { \
+		bgame_entry_file = __FILE__; \
 		return bgame_static(APP, argc, argv); \
 	}
 

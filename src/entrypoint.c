@@ -6,6 +6,8 @@
 extern void
 bgame_frame_allocator_next_frame(void);
 
+const char* bgame_entry_file = __FILE__;
+
 #if BGAME_RELOADABLE
 
 static int bgame_reload_block_counter = 0;

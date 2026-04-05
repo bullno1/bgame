@@ -1,5 +1,6 @@
 #include "internal.h"
 #include <bgame/reloadable.h>
+#include <bgame/entrypoint.h>
 #define BLOG_IMPLEMENTATION
 #include <blog.h>
 
@@ -10,8 +11,8 @@ static blog_file_logger_options_t bgame_log_options = {
 static void
 bgame_log_init(void) {
 	blog_init(&(blog_options_t){
-		.current_filename = __FILE__,
-		.current_depth_in_project = 2,
+		.current_filename = bgame_entry_file,
+		.current_depth_in_project = 1,
 	});
 
 	bgame_log_options.file = stderr;
