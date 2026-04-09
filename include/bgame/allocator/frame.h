@@ -28,7 +28,7 @@ bgame_make_frame_copy(void* data, size_t size, size_t alignment) {
 }
 
 static inline const char*
-bgame_vfmt(const char* fmt, va_list args) {
+bgame_vfmt(int* len_out, const char* fmt, va_list args) {
 	char fmt_buf[512];
 	va_list args_copy;
 	va_copy(args_copy, args);
@@ -43,6 +43,7 @@ bgame_vfmt(const char* fmt, va_list args) {
 
 	va_end(args_copy);
 
+	if (len_out != NULL) { *len_out = len; }
 	return result;
 }
 
@@ -51,7 +52,7 @@ static inline const char*
 bgame_fmt(const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
-	const char* result = bgame_vfmt(fmt, args);
+	const char* result = bgame_vfmt(NULL, fmt, args);
 	va_end(args);
 	return result;
 }
