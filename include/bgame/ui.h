@@ -1,7 +1,7 @@
 #ifndef BGAME_UI_H
 #define BGAME_UI_H
 
-#include "clay.h"
+#include <clay.h>
 #include <bgame/asset/font.h>
 #include <cute_color.h>
 

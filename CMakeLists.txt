@@ -32,6 +32,7 @@ target_link_libraries(bgame PUBLIC
 	cute
 	$<$<BOOL:${RELOADABLE}>:remodule>
 	blibs
+	clay
 )
 
 add_library(bgame-loader STATIC "src/loader.c")

@@ -12,4 +12,4 @@
 #endif
 
 #define CLAY_IMPLEMENTATION
-#include <bgame/clay.h>
+#include <clay.h>

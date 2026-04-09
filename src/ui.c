@@ -151,6 +151,8 @@ void
 bgame_handle_ui_render_command(const Clay_RenderCommand* command) {
 	switch (command->commandType) {
 		case CLAY_RENDER_COMMAND_TYPE_NONE:
+		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START:
+		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END:
 			break;
 		case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
 			cf_draw_push_color(
