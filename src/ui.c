@@ -22,6 +22,7 @@ typedef struct {
 
 BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
+BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
 
 static void
 bgame_ui_error(Clay_ErrorData errorText) {
@@ -100,8 +101,13 @@ BGAME_ON_LOAD(bgame_ui) {
 	bgame_ui_init();
 }
 
+BGAME_BEFORE_RELOAD(bgame_ui) {
+	bgame_ui_debugger_enabled = Clay_IsDebugModeEnabled();
+}
+
 BGAME_AFTER_RELOAD(bgame_ui) {
 	bgame_ui_init();
+	Clay_SetDebugModeEnabled(bgame_ui_debugger_enabled);
 }
 
 BGAME_ON_UNLOAD(bgame_ui) {
