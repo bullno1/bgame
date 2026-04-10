@@ -82,6 +82,16 @@ bgame_ui_color_from_cf(CF_Color color) {
 	};
 }
 
+static inline Clay_Color
+bgame_ui_color_rgb(uint8_t r, uint8_t g, uint8_t b) {
+	return bgame_ui_color_from_cf(cf_make_color_rgb(r, g, b));
+}
+
+static inline Clay_Color
+bgame_ui_color_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+	return bgame_ui_color_from_cf(cf_make_color_rgba(r, g, b, a));
+}
+
 static inline CF_Color
 bgame_ui_color_from_clay(Clay_Color color) {
 	return (CF_Color) {
