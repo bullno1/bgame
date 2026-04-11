@@ -3,6 +3,7 @@
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
 #include <bgame/allocator/frame.h>
+#include <bgame/shader.h>
 #include <blog.h>
 #include <bminmax.h>
 #include <cute_app.h>
@@ -10,6 +11,7 @@
 #include <cute_time.h>
 #include <cute_draw.h>
 #include <cute_math.h>
+#include "ui/gen/overlay_shd.h"
 
 typedef struct {
 	uint16_t capacity;
@@ -24,6 +26,7 @@ typedef struct {
 BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
 BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
+BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
 
 static void
 bgame_ui_error(Clay_ErrorData errorText) {
@@ -90,6 +93,8 @@ bgame_ui_init(void) {
 		}
 	);
 	Clay_SetMeasureTextFunction(bgame_ui_measure_text, NULL);
+
+	bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
 }
 
 static void
@@ -158,9 +163,17 @@ void
 bgame_handle_ui_render_command(const Clay_RenderCommand* command) {
 	switch (command->commandType) {
 		case CLAY_RENDER_COMMAND_TYPE_NONE:
-		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START:
-		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END:
 			break;
+		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START: {
+			cf_draw_push_shader(bgame_ui_overlay_shader);
+			cf_draw_set_uniform_color(
+				"u_overlay_color",
+				bgame_ui_color_from_clay(command->renderData.overlayColor.color)
+			);
+		} break;
+		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END: {
+			cf_draw_pop_shader();
+		} break;
 		case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
 			cf_draw_push_color(
 				bgame_ui_color_from_clay(

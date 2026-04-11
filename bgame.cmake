@@ -46,6 +46,20 @@ function (add_bgame_app NAME SOURCES)
 	endif ()
 endfunction ()
 
+function (compile_shader INPUT VAR_NAME OUTPUT)
+	if (NOT EMSCRIPTEN)
+		add_custom_command(
+			OUTPUT ${OUTPUT}
+			COMMAND cute-shaderc
+				-type=draw
+				-varname=${VAR_NAME}
+				-oheader=${OUTPUT}
+				${INPUT}
+			DEPENDS ${INPUT} cute-shaderc
+		)
+	endif ()
+endfunction ()
+
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
 if (RELOADABLE)
