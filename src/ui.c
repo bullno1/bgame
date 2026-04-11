@@ -93,8 +93,6 @@ bgame_ui_init(void) {
 		}
 	);
 	Clay_SetMeasureTextFunction(bgame_ui_measure_text, NULL);
-
-	bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
 }
 
 static void
@@ -113,6 +111,8 @@ BGAME_BEFORE_RELOAD(bgame_ui) {
 
 BGAME_AFTER_RELOAD(bgame_ui) {
 	bgame_ui_init();
+	bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
+
 	Clay_SetDebugModeEnabled(bgame_ui_debugger_enabled);
 }
 
@@ -321,6 +321,10 @@ bgame_begin_render_ui(void) {
 	float half_height = h * 0.5f;
 	cf_draw_push();
 	cf_draw_translate(-half_width, half_height);
+
+	if (bgame_ui_overlay_shader.id == 0) {
+		bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
+	}
 }
 
 void
