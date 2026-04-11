@@ -26,6 +26,14 @@ typedef struct {
 	int blur;
 } bgame_ui_text_config_t;
 
+typedef float (*bgame_ui_transition_curve_fn_t)(float progress);
+
+typedef struct {
+	bgame_ui_transition_curve_fn_t curve;
+	bgame_ui_transition_curve_fn_t enter_curve;
+	bgame_ui_transition_curve_fn_t exit_curve;
+} bgame_ui_transition_config_t;
+
 void
 bgame_update_ui(void);
 
@@ -52,6 +60,9 @@ bgame_custom_ui_element(
 	bgame_custom_ui_render_fn_t render_fn,
 	void* userdata
 );
+
+bool
+bgame_ui_transition(Clay_TransitionCallbackArguments arguments);
 
 static inline void
 bgame_load_ui_font(

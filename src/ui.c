@@ -9,6 +9,7 @@
 #include <cute_input.h>
 #include <cute_time.h>
 #include <cute_draw.h>
+#include <cute_math.h>
 
 typedef struct {
 	uint16_t capacity;
@@ -331,4 +332,91 @@ bgame_custom_ui_element(
 void*
 bgame_ui_text_config(bgame_ui_text_config_t config) {
 	return bgame_make_frame_copy(config);
+}
+
+bool
+bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
+	float progress = 1.f;
+	if (arguments.duration > 0) {
+		progress = cf_min(arguments.elapsedTime / arguments.duration, 1);
+	}
+
+	bgame_ui_transition_curve_fn_t curve = cf_smoothstep;
+
+	bgame_ui_transition_config_t* config = arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
+		? arguments.current->userData
+		: arguments.target.userData;
+	if (config != NULL) {
+		if (config->curve != NULL) {
+			curve = config->curve;
+		}
+
+		if (
+			arguments.transitionState == CLAY_TRANSITION_STATE_ENTERING
+			&&
+			config->enter_curve != NULL
+		) {
+			curve = config->enter_curve;
+		} else if (
+			arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
+			&&
+			config->exit_curve != NULL
+		) {
+			curve = config->exit_curve;
+		}
+
+		arguments.current->userData = arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
+			? bgame_make_frame_copy(*config) // Retain config for the next frame
+			: config;
+	}
+
+	float lerp_factor = curve(progress);
+
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_X) {
+		arguments.current->boundingBox.x = cf_lerp(arguments.initial.boundingBox.x, arguments.target.boundingBox.x, lerp_factor);
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_Y) {
+		arguments.current->boundingBox.y = cf_lerp(arguments.initial.boundingBox.y, arguments.target.boundingBox.y, lerp_factor);
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_WIDTH) {
+		arguments.current->boundingBox.width = cf_lerp(arguments.initial.boundingBox.width, arguments.target.boundingBox.width, lerp_factor);
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_HEIGHT) {
+		arguments.current->boundingBox.height = cf_lerp(arguments.initial.boundingBox.height, arguments.target.boundingBox.height, lerp_factor);
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BACKGROUND_COLOR) {
+		arguments.current->backgroundColor = CLAY__INIT(Clay_Color) {
+			.r = cf_lerp(arguments.initial.backgroundColor.r, arguments.target.backgroundColor.r, lerp_factor),
+			.g = cf_lerp(arguments.initial.backgroundColor.g, arguments.target.backgroundColor.g, lerp_factor),
+			.b = cf_lerp(arguments.initial.backgroundColor.b, arguments.target.backgroundColor.b, lerp_factor),
+			.a = cf_lerp(arguments.initial.backgroundColor.a, arguments.target.backgroundColor.a, lerp_factor),
+		};
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_OVERLAY_COLOR) {
+		arguments.current->overlayColor = CLAY__INIT(Clay_Color) {
+			.r = cf_lerp(arguments.initial.overlayColor.r, arguments.target.overlayColor.r, lerp_factor),
+			.g = cf_lerp(arguments.initial.overlayColor.g, arguments.target.overlayColor.g, lerp_factor),
+			.b = cf_lerp(arguments.initial.overlayColor.b, arguments.target.overlayColor.b, lerp_factor),
+			.a = cf_lerp(arguments.initial.overlayColor.a, arguments.target.overlayColor.a, lerp_factor),
+		};
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BORDER_COLOR) {
+		arguments.current->borderColor = CLAY__INIT(Clay_Color) {
+			.r = cf_lerp(arguments.initial.borderColor.r, arguments.target.borderColor.r, lerp_factor),
+			.g = cf_lerp(arguments.initial.borderColor.g, arguments.target.borderColor.g, lerp_factor),
+			.b = cf_lerp(arguments.initial.borderColor.b, arguments.target.borderColor.b, lerp_factor),
+			.a = cf_lerp(arguments.initial.borderColor.a, arguments.target.borderColor.a, lerp_factor),
+		};
+	}
+	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BORDER_WIDTH) {
+		arguments.current->borderWidth = CLAY__INIT(Clay_BorderWidth) {
+			.left = (uint16_t)cf_lerp(arguments.initial.borderWidth.left, arguments.target.borderWidth.left, lerp_factor),
+			.right = (uint16_t)cf_lerp(arguments.initial.borderWidth.right, arguments.target.borderWidth.right, lerp_factor),
+			.top = (uint16_t)cf_lerp(arguments.initial.borderWidth.top, arguments.target.borderWidth.top, lerp_factor),
+			.bottom = (uint16_t)cf_lerp(arguments.initial.borderWidth.bottom, arguments.target.borderWidth.bottom, lerp_factor),
+			.betweenChildren = (uint16_t)cf_lerp(arguments.initial.borderWidth.betweenChildren, arguments.target.borderWidth.betweenChildren, lerp_factor),
+		};
+	}
+
+	return progress >= 1.f;
 }
