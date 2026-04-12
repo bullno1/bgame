@@ -191,6 +191,8 @@ bgame_handle_ui_render_command(const Clay_RenderCommand* command) {
 			CF_Aabb aabb = bgame_ui_aabb(command->boundingBox);
 			cf_draw_push_color(bgame_ui_color_from_clay(border.color));
 			if (
+				border.width.top != 0
+				&&
 				border.width.top == border.width.left
 				&&
 				border.width.top == border.width.right
