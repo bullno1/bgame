@@ -29,8 +29,13 @@ BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
 BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
 
 static void
-bgame_ui_error(Clay_ErrorData errorText) {
-	BLOG_ERROR("%.*s", errorText.errorText.length, errorText.errorText.chars);
+bgame_ui_error(Clay_ErrorData error) {
+	static int last_error = 0;
+
+	if (error.errorType == last_error) { return; }
+
+	BLOG_ERROR("%.*s", error.errorText.length, error.errorText.chars);
+	last_error = error.errorType;
 }
 
 const char*
