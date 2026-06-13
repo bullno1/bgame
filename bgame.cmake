@@ -28,7 +28,7 @@ function (add_bgame_app NAME SOURCES)
 		)
 	else ()
 		add_executable(${NAME} ${SOURCES})
-		target_link_libraries(${NAME} PRIVATE bgame bgame-loader bgame-loader-stub)
+		target_link_libraries(${NAME} PRIVATE bgame bgame-loader-stub bgame-loader)
 	endif ()
 
 	if (EMSCRIPTEN)
