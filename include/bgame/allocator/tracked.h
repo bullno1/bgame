@@ -1,6 +1,7 @@
 #ifndef BGAME_TRACKED_ALLOCATOR_H
 
 #include <bgame/reloadable.h>
+#include <bmacro.h>
 #include <autolist.h>
 
 #define BGAME_DECLARE_TRACKED_ALLOCATOR(NAME) \
@@ -10,7 +11,10 @@
 
 #define BGAME_DECLARE_SCENE_ALLOCATOR(SCENE_NAME) \
 	BGAME_PRIVATE_VAR(SCENE_NAME, struct bgame_allocator_s*, scene_allocator) \
-	AUTOLIST_ADD_ENTRY(bgame_tracked_allocator_list, SCENE_NAME##_allocator, scene_allocator) \
+	BGAME_ADD_AUTOLIST_ENTRY(BCONCAT(SCENE_NAME, _allocator))
+
+#define BGAME_ADD_AUTOLIST_ENTRY(NAME) \
+	AUTOLIST_ADD_ENTRY(bgame_tracked_allocator_list, NAME, scene_allocator)
 
 struct bgame_allocator_s;
 
