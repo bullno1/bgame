@@ -23,15 +23,6 @@ function hideOverlay() {
 	overlayElement.style.visibility = 'hidden';
 }
 
-function quantizeDevicePixelRatio() {
-	// A non-quantized ratio makes everything ugly
-	window._emscripten_get_device_pixel_ratio = () => {
-		var dpr = window.devicePixelRatio;
-		var quantizedDpr = Math.round(dpr * 2) / 2;
-		return quantizedDpr;
-	};
-}
-
 /**
  * Fetch a WASM file with progress tracking and instantiate it.
  * @param {string} wasmUrl - URL of the WASM file.
@@ -75,9 +66,6 @@ async function fetchAndInstantiateWasm(wasmUrl, onProgress = () => {}, imports =
 }
 
 window.Module = {
-	preInit: [
-		quantizeDevicePixelRatio,
-	],
 	print(...args) {
 		console.log(...args);
 	},
