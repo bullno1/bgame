@@ -49,20 +49,18 @@ function (add_bgame_app NAME SOURCES)
 endfunction ()
 
 function (compile_shader INPUT VAR_NAME OUTPUT)
-	if (NOT EMSCRIPTEN)
-		add_custom_command(
-			OUTPUT ${OUTPUT}
-			COMMAND cute-shaderc
-				-type=draw
-				-varname=${VAR_NAME}
-				-oheader=${OUTPUT}
-				${INPUT}
-			DEPENDS ${INPUT} cute-shaderc
-		)
-	endif ()
+	add_custom_command(
+		OUTPUT ${OUTPUT}
+		COMMAND cute-shaderc
+			-type=draw
+			-varname=${VAR_NAME}
+			-oheader=${OUTPUT}
+			${INPUT}
+		DEPENDS ${INPUT} cute-shaderc
+	)
 endfunction ()
 
-if (NOT CF_CUTE_SHADERC)
+if (NOT CF_CUTE_SHADERC OR EMSCRIPTEN)
 	FetchContent_Declare(
 		cosmo-cute-shaderc
 		URL      "https://github.com/bullno1/cosmo-cute-shaderc/releases/download/v${COSMO_CUTE_SHADERC_VERSION}/cute-shaderc.tar.gz"
