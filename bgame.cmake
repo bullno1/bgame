@@ -1,4 +1,6 @@
 option(RELOADABLE "Is the program reloadable" ON)
+set(COSMO_CUTE_SHADERC_VERSION "1.1.1-a32e1f0+build.1" CACHE STRING "cosmo-cute-shaderc version")
+set(COSMO_CUTE_SHADERC_SHA256 "62c3b120142018f42dbf90917843d9fdde40dbf11b930cb073810120bbc0c994" CACHE STRING "SHA256 of cosmo-cute-shaderc")
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -59,6 +61,20 @@ function (compile_shader INPUT VAR_NAME OUTPUT)
 		)
 	endif ()
 endfunction ()
+
+if (NOT CF_CUTE_SHADERC)
+	FetchContent_Declare(
+		cosmo-cute-shaderc
+		URL      "https://github.com/bullno1/cosmo-cute-shaderc/releases/download/v${COSMO_CUTE_SHADERC_VERSION}/cute-shaderc.tar.gz"
+		DOWNLOAD_EXTRACT_TIMESTAMP true
+		URL_HASH SHA256=${COSMO_CUTE_SHADERC_SHA256}
+	)
+	FetchContent_MakeAvailable(cosmo-cute-shaderc)
+	add_executable(cute-shaderc IMPORTED GLOBAL)
+	set_target_properties(cute-shaderc PROPERTIES
+		IMPORTED_LOCATION "${cosmo-cute-shaderc_SOURCE_DIR}/cute-shaderc.exe"
+	)
+endif ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
