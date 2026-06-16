@@ -76,7 +76,7 @@ endif ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
-if (LINUX)
+if (LINUX OR EMSCRIPTEN)
 	if (RELOADABLE)
 		set(PHYSFS_TARGET physfs)
 	else ()
