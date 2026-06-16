@@ -76,18 +76,20 @@ endif ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
-if (RELOADABLE)
-	set(PHYSFS_TARGET physfs)
-else ()
-	set(PHYSFS_TARGET physfs-static)
-endif ()
+if (LINUX)
+	if (RELOADABLE)
+		set(PHYSFS_TARGET physfs)
+	else ()
+		set(PHYSFS_TARGET physfs-static)
+	endif ()
 
-set_target_properties("${PHYSFS_TARGET}" PROPERTIES
-	C_STANDARD 99
-	C_STANDARD_REQUIRED ON
-	C_EXTENSIONS OFF
-)
-target_compile_definitions("${PHYSFS_TARGET}" PRIVATE _POSIX_C_SOURCE=200112L)
+	set_target_properties("${PHYSFS_TARGET}" PROPERTIES
+		C_STANDARD 99
+		C_STANDARD_REQUIRED ON
+		C_EXTENSIONS OFF
+	)
+	target_compile_definitions("${PHYSFS_TARGET}" PRIVATE _POSIX_C_SOURCE=200112L)
+endif ()
 
 if (EMSCRIPTEN)
 	target_compile_definitions("${PHYSFS_TARGET}" PRIVATE PHYSFS_PLATFORM_LINUX=1)
@@ -98,7 +100,7 @@ if (EMSCRIPTEN)
 	add_library(bgame-emscripten-shell INTERFACE)
 	add_dependencies(bgame-emscripten-shell copy-emscripten-shell)
 	target_link_options(bgame-emscripten-shell INTERFACE --shell-file "${CMAKE_CURRENT_LIST_DIR}/emscripten/shell.html")
-else ()
+elseif (LINUX)
 	get_target_property(S2N_OPTS s2n COMPILE_OPTIONS)
 	list(REMOVE_ITEM S2N_OPTS "-std=gnu99")
 	set_target_properties(s2n PROPERTIES COMPILE_OPTIONS "${S2N_OPTS}")

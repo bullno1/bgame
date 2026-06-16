@@ -62,6 +62,7 @@ bgame_make_aabb_from_shape(const bgame_collision_shape_t* shape, CF_M3x2 transfo
 
 			return cf_make_aabb(cf_v2(min_x, min_y), cf_v2(max_x, max_y));
 		} break;
+		default: return (CF_Aabb){ 0 };
 	}
 }
 
@@ -137,5 +138,6 @@ bgame_transform_collision_shape(const bgame_collision_shape_t* shape, CF_M3x2 tr
 				},
 			};
 		} break;
+		default: return *shape;
 	}
 }

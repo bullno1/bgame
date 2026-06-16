@@ -41,6 +41,9 @@ target_link_libraries(bgame PUBLIC
 	blibs
 	clay
 )
+if(MSVC)
+    target_compile_options(bgame PRIVATE "/experimental:c11atomics")
+endif()
 
 add_library(bgame-loader STATIC "src/loader.c")
 target_compile_definitions(bgame-loader PUBLIC BGAME_RELOADABLE=$<IF:$<BOOL:${RELOADABLE}>,1,0>)
