@@ -7,6 +7,11 @@
 
 extern const char* bgame_entry_file;
 
+#define BGAME_APP \
+	extern bgame_app_t bgame_app; \
+	BGAME_ENTRYPOINT(bgame_app); \
+	bgame_app_t bgame_app =
+
 #if BGAME_RELOADABLE
 
 #define BGAME_ENTRYPOINT(APP) \
