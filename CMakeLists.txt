@@ -11,6 +11,7 @@ set(SOURCES
 	"src/entrypoint.c"
 	"src/scene.c"
 	"src/shader.c"
+	"src/metrics.c"
 	"src/asset.c"
 	"src/asset/sprite.c"
 	"src/asset/audio.c"

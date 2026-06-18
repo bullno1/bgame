@@ -1,11 +1,19 @@
 #include "internal.h"
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
+#include <bgame/metrics.h>
 #include <stdlib.h>
+
+BGAME_DEFINE_METRIC(bgame_alloc_total) = {
+	.type = BGAME_METRIC_COUNTER,
+};
 
 static void*
 bgame_default_realloc(void* ptr, size_t size, bgame_allocator_t* ctx) {
 	(void)ctx;
+
+	bgame_inc_counter(&bgame_alloc_total, 1);
+
 	if (size > 0) {
 		return realloc(ptr, size);
 	} else {
