@@ -40,9 +40,19 @@ bgame_collision_shape_load(
 		shape->data.poly.count = num_verts;
 		cf_make_poly(&shape->data.poly);
 		result = true;
+	} else if (strcmp(type, "aabb") == 0) {
+		shape->type = CF_SHAPE_TYPE_AABB;
+
+		CF_JVal jmin = cf_json_get(root, "min");
+		shape->data.aabb.min.x = cf_json_get_float(cf_json_get(jmin, "x"));
+		shape->data.aabb.min.y = cf_json_get_float(cf_json_get(jmin, "y"));
+
+		CF_JVal jmax = cf_json_get(root, "max");
+		shape->data.aabb.max.x = cf_json_get_float(cf_json_get(jmax, "x"));
+		shape->data.aabb.max.y = cf_json_get_float(cf_json_get(jmax, "y"));
+		result = true;
 	} else {
 		BLOG_ERROR("Invalid shape type");
-		goto end;
 	}
 
 end:

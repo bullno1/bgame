@@ -3,6 +3,9 @@
 
 #include <cute_coroutine.h>
 #include <bgame/reloadable.h>
+#include <bent.h>
+
+static bent_t bgame__last_entity;
 
 #define BGAME_SCOPE(ENTER, EXIT) \
 	for ( \
@@ -25,6 +28,14 @@
 		if (condition) { bgame_spawn_coro(&BGAME_UNIQUE_VAR, function, arg); } \
 		bgame_resume_coro(&BGAME_UNIQUE_VAR); \
 	} while (0);
+
+#define $this \
+	bgame__this_world, bgame__this_entity
+
+#define make_entity(WORLD) \
+	bgame__last_entity = bent_create(WORLD); \
+	for (bent_world_t* bgame__this_world = WORLD; bgame__this_world != NULL; bgame__this_world = NULL) \
+		for (bent_t bgame__this_entity = bgame__last_entity; bgame__this_entity.index != 0; bgame__this_entity.index = 0)
 
 static inline void
 bgame_spawn_coro(CF_Coroutine* coro, CF_CoroutineFn fn, void* arg) {
