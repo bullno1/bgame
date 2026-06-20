@@ -43,7 +43,7 @@ target_link_libraries(bgame PUBLIC
 	clay
 )
 if(MSVC)
-    target_compile_options(bgame PRIVATE "/experimental:c11atomics")
+    target_compile_options(bgame PUBLIC "/experimental:c11atomics")
 endif()
 
 add_library(bgame-loader STATIC "src/loader.c")
