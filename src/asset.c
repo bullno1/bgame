@@ -57,10 +57,10 @@ bgame_asset_sys_init(void) {
 	bgame_asset_initialized = true;
 	++bgame_asset_code_version;
 
-	bhash_config_t hconfig = bhash_config_default();
-	hconfig.memctx = bgame_default_allocator;
-	hconfig.removable = false;
-	bhash_reinit(&bgame_asset_registry, hconfig);
+	bhash_reinit(&bgame_asset_registry, &(bhash_config_t){
+		.memctx = bgame_default_allocator,
+		.put_only = true,
+	});
 
 	AUTOLIST_FOREACH(itr, bgame__asset_type_list) {
 		bgame_asset_type_t* type = itr->value_addr;
@@ -151,11 +151,11 @@ bgame_asset_init(bgame_asset_bundle_t** bundle_ptr, bgame_allocator_t* allocator
 		*bundle_ptr = bundle;
 	}
 
-	bhash_config_t config = bhash_config_default();
-	config.memctx = allocator;
-	config.hash = bgame_asset_key_hash;
-	config.eq = bgame_asset_key_eq;
-	bhash_reinit(&bundle->assets, config);
+	bhash_reinit(&bundle->assets, &(bhash_config_t){
+		.memctx = allocator,
+		.hash = bgame_asset_key_hash,
+		.eq = bgame_asset_key_eq,
+	});
 }
 
 static inline void

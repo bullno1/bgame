@@ -13,10 +13,9 @@ BGAME_VAR(bgame_shader_bytecode_cache_t, bgame_shader_bytecode_cache) = { 0 };
 
 static void
 bgame_init_shader_bytecode_cache(void) {
-	bhash_config_t hconfig = bhash_config_default();
-	hconfig.memctx = bgame_default_allocator;
-
-	bhash_reinit(&bgame_shader_bytecode_cache, hconfig);
+	bhash_reinit(&bgame_shader_bytecode_cache, &(bhash_config_t){
+		.memctx = bgame_default_allocator,
+	});
 }
 
 #endif
