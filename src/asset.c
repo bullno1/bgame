@@ -175,9 +175,7 @@ bgame_asset_cleanup(bgame_asset_bundle_t** bundle_ptr) {
 	bgame_asset_bundle_t* bundle = *bundle_ptr;
 	if (bundle == NULL) { return; }
 
-	bhash_index_t num_assets = bhash_len(&bundle->assets);
-	for (bhash_index_t i = 0; i < num_assets; ++i) {
-		bgame_asset_t* asset = bundle->assets.values[i];
+	BHASH_FOREACH_VALUE(asset, &bundle->assets) {
 		const bgame_asset_type_t* asset_type = bgame_asset_lookup_type(asset->key.type);
 		asset_type->unload(bundle, asset->data);
 		bgame_asset_destroy(bundle, asset);
@@ -322,19 +320,14 @@ bgame_asset_check_bundle(bgame_asset_bundle_t* bundle) {
 	bgame_asset_sys_init();
 
 	if (bundle->code_version != bgame_asset_code_version) {
-		bhash_index_t num_assets = bhash_len(&bundle->assets);
-		for (bhash_index_t i = 0; i < num_assets; ++i) {
-			bgame_asset_t* asset = bundle->assets.values[i];
+		BHASH_FOREACH_VALUE(asset, &bundle->assets) {
 			bresmon_set_watch_callback(asset->watch, bgame_asset_on_file_changed, asset);
 		}
 		bundle->code_version = bgame_asset_code_version;
 	}
 
 	if (bresmon_check(bundle->monitor, false) > 0) {
-		bhash_index_t num_assets = bhash_len(&bundle->assets);
-		for (bhash_index_t i = 0; i < num_assets; ++i) {
-			bgame_asset_t* asset = bundle->assets.values[i];
-
+		BHASH_FOREACH_VALUE(asset, &bundle->assets) {
 			if (asset->loaded_version != asset->source_version) {
 				const bgame_asset_type_t* type = bgame_asset_lookup_type(asset->key.type);
 				if (type->load(bundle, asset->data, asset->key.path.chars)) {
