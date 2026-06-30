@@ -32,10 +32,13 @@ static bent_t bgame__last_entity;
 #define $this \
 	bgame__this_world, bgame__this_entity
 
+#define with_entity(WORLD, ENTITY) \
+	for (bent_world_t* bgame__this_world = (WORLD); bgame__this_world != NULL; bgame__this_world = NULL) \
+		for (bent_t bgame__this_entity = (ENTITY); bgame__this_entity.index != 0; bgame__this_entity.index = 0)
+
 #define make_entity(WORLD) \
-	bgame__last_entity = bent_create(WORLD); \
-	for (bent_world_t* bgame__this_world = WORLD; bgame__this_world != NULL; bgame__this_world = NULL) \
-		for (bent_t bgame__this_entity = bgame__last_entity; bgame__this_entity.index != 0; bgame__this_entity.index = 0)
+	bgame__last_entity = bent_create((WORLD)); \
+	with_entity(WORLD, bgame__last_entity)
 
 static inline void
 bgame_spawn_coro(CF_Coroutine* coro, CF_CoroutineFn fn, void* arg) {
