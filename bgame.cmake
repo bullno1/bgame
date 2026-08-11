@@ -1,6 +1,6 @@
 option(RELOADABLE "Is the program reloadable" ON)
-set(COSMO_CUTE_SHADERC_VERSION "1.1.1-a32e1f0+build.1" CACHE STRING "cosmo-cute-shaderc version")
-set(COSMO_CUTE_SHADERC_SHA256 "62c3b120142018f42dbf90917843d9fdde40dbf11b930cb073810120bbc0c994" CACHE STRING "SHA256 of cosmo-cute-shaderc")
+set(COSMO_CUTE_SHADERC_VERSION "1.1.0-beebd94+build.1" CACHE STRING "cosmo-cute-shaderc version")
+set(COSMO_CUTE_SHADERC_SHA256 "f1516a2fabb8316a6694dcdbe6e3f8bb845ed2abf5b444e4ba4422ff76c4e330" CACHE STRING "SHA256 of cosmo-cute-shaderc")
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -48,11 +48,35 @@ function (add_bgame_app NAME SOURCES)
 	endif ()
 endfunction ()
 
-function (compile_shader INPUT VAR_NAME OUTPUT)
+function (compile_draw_shader INPUT VAR_NAME OUTPUT)
 	add_custom_command(
 		OUTPUT ${OUTPUT}
 		COMMAND cute-shaderc
 			-type=draw
+			-varname=${VAR_NAME}
+			-oheader=${OUTPUT}
+			${INPUT}
+		DEPENDS ${INPUT} cute-shaderc
+	)
+endfunction ()
+
+function (compile_vertex_shader INPUT VAR_NAME OUTPUT)
+	add_custom_command(
+		OUTPUT ${OUTPUT}
+		COMMAND cute-shaderc
+			-type=vertex
+			-varname=${VAR_NAME}
+			-oheader=${OUTPUT}
+			${INPUT}
+		DEPENDS ${INPUT} cute-shaderc
+	)
+endfunction ()
+
+function (compile_fragment_shader INPUT VAR_NAME OUTPUT)
+	add_custom_command(
+		OUTPUT ${OUTPUT}
+		COMMAND cute-shaderc
+			-type=fragment
 			-varname=${VAR_NAME}
 			-oheader=${OUTPUT}
 			${INPUT}

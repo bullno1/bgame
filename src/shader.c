@@ -4,6 +4,7 @@
 #include <bhash.h>
 #include <blog.h>
 #include "chibihash64.h"
+#include "chibihash64-stream.h"
 
 #if BGAME_RELOADABLE
 
@@ -45,5 +46,36 @@ bgame_load_draw_shader(CF_Shader* shader, CF_DrawShaderBytecode bytecode) {
 	}
 #else
 	*shader = cf_make_draw_shader_from_bytecode(bytecode);
+#endif
+}
+
+void
+bgame_load_gfx_shader(CF_Shader* shader, CF_ShaderBytecode vertex, CF_ShaderBytecode fragment) {
+#if BGAME_RELOADABLE
+	bgame_init_shader_bytecode_cache();
+
+	ChibiHash64Ctx ctx = chibihash64_init(0);
+	chibihash64_append(&ctx, vertex.content, vertex.size);
+	chibihash64_append(&ctx, fragment.content, fragment.size);
+	uint64_t hash = chibihash64_finish(&ctx);
+
+	uint64_t* cached_hash = bhash_get_value(&bgame_shader_bytecode_cache, *shader);
+	if (cached_hash != NULL) {
+		if (*cached_hash != hash) {
+			if (shader->id != 0) { cf_destroy_shader(*shader); }
+
+			bhash_remove(&bgame_shader_bytecode_cache, *shader);
+			*shader = cf_make_shader_from_bytecode(vertex, fragment);
+			bhash_put(&bgame_shader_bytecode_cache, *shader, hash);
+		}
+	} else {
+		if (shader->id != 0) { cf_destroy_shader(*shader); }
+
+		*shader = cf_make_shader_from_bytecode(vertex, fragment);
+		bhash_put(&bgame_shader_bytecode_cache, *shader, hash);
+	}
+
+#else
+	*shader = cf_make_shader_from_bytecode(vertex, fragment);
 #endif
 }

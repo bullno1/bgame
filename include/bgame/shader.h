@@ -10,4 +10,7 @@
 void
 bgame_load_draw_shader(CF_Shader* shader, CF_DrawShaderBytecode bytecode);
 
+void
+bgame_load_gfx_shader(CF_Shader* shader, CF_ShaderBytecode vertex, CF_ShaderBytecode fragment);
+
 #endif

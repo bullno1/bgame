@@ -27,7 +27,7 @@ set(SOURCES
 	"src/ui/gen/overlay_shd.h"
 )
 
-compile_shader(
+compile_draw_shader(
 	${CMAKE_CURRENT_SOURCE_DIR}/src/ui/overlay.glsl
 	bgame_ui_overlay_shd_bytecode
 	${CMAKE_CURRENT_SOURCE_DIR}/src/ui/gen/overlay_shd.h
