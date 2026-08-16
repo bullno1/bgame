@@ -14,9 +14,6 @@ static bent_t bgame__last_entity;
 		++BGAME_UNIQUE_VAR(bgame__scope_), EXIT \
 	)
 
-#define BGAME_CF_COLOR(color) \
-	BGAME_SCOPE(cf_draw_push_color(color), cf_draw_pop_color())
-
 #define BGAME_UNIQUE_VAR(PREFIX) BGAME_CONCAT(PREFIX, __LINE__)
 
 #define BGAME_CONCAT(PREFIX, SUFFIX) BGAME__CONCAT2(PREFIX, SUFFIX)
@@ -39,6 +36,14 @@ static bent_t bgame__last_entity;
 #define make_entity(WORLD) \
 	bgame__last_entity = bent_create((WORLD)); \
 	with_entity(WORLD, bgame__last_entity)
+
+#ifdef BGAME_SCENE_NAME
+#	include "scene.h"
+#	include "allocator/tracked.h"
+#	define SCENE BGAME_SCENE(BGAME_SCENE_NAME) =
+#	define SCENE_VAR(TYPE, NAME) BGAME_PRIVATE_VAR(SCENE_NAME, TYPE, NAME)
+BGAME_DECLARE_SCENE_ALLOCATOR(BGAME_SCENE_NAME)
+#endif
 
 static inline void
 bgame_spawn_coro(CF_Coroutine* coro, CF_CoroutineFn fn, void* arg) {
