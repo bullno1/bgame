@@ -1,6 +1,6 @@
 option(RELOADABLE "Is the program reloadable" ON)
-set(COSMO_CUTE_SHADERC_VERSION "1.1.0-beebd94+build.1" CACHE STRING "cosmo-cute-shaderc version")
-set(COSMO_CUTE_SHADERC_SHA256 "f1516a2fabb8316a6694dcdbe6e3f8bb845ed2abf5b444e4ba4422ff76c4e330" CACHE STRING "SHA256 of cosmo-cute-shaderc")
+set(COSMO_CUTE_SHADERC_VERSION "1.1.0-644723f+build.1" CACHE STRING "cosmo-cute-shaderc version")
+set(COSMO_CUTE_SHADERC_SHA256 "98cd93116c6d628e482806acc2df06a47493a96f2917a10a33110ff69170a742" CACHE STRING "SHA256 of cosmo-cute-shaderc")
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS OFF)
