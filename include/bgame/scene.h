@@ -22,10 +22,15 @@ typedef struct bgame_scene_s {
 	void (*resume)(void);
 	void (*before_reload)(void);
 	void (*after_reload)(void);
-} bgame_scene_t;
+} bgame_scene_def_t;
 
 #define BGAME_SCENE(NAME) \
-	AUTOLIST_ENTRY_EX(bgame_scene_list, bgame_scene_t, NAME, BCONCAT(bgame_scene_, NAME))
+	AUTOLIST_ENTRY_EX(bgame_scene_list, bgame_scene_def_t, NAME, BCONCAT(bgame_scene_, NAME))
+
+typedef struct bgame_scene_reg_s {
+	const char* name;
+	const bgame_scene_def_t* def;
+} bgame_scene_reg_t;
 
 void
 bgame_set_next_scene_data(void* data);
@@ -45,8 +50,11 @@ bgame_pop_scene(void);
 void
 bgame_clear_scene_stack(void);
 
-bgame_scene_t*
+bgame_scene_reg_t
 bgame_current_scene(void);
+
+const char*
+bgame_current_scene_name(void);
 
 void*
 bgame_current_scene_data(void);
@@ -65,5 +73,8 @@ bgame_scene_before_reload(void);
 
 void
 bgame_scene_after_reload(void);
+
+void
+bgame_list_scenes(bgame_scene_reg_t** scenes, int* num_scenes);
 
 #endif
