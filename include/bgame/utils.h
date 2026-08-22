@@ -41,7 +41,7 @@ static bent_t bgame__last_entity;
 #	include "scene.h"
 #	include "allocator/tracked.h"
 #	define SCENE BGAME_SCENE(BGAME_SCENE_NAME) =
-#	define SCENE_VAR(TYPE, NAME) BGAME_PRIVATE_VAR(SCENE_NAME, TYPE, NAME)
+#	define SCENE_VAR(TYPE, NAME) BGAME_SCENE_VAR(BGAME_SCENE_NAME, TYPE, NAME)
 BGAME_DECLARE_SCENE_ALLOCATOR(BGAME_SCENE_NAME)
 #endif
 

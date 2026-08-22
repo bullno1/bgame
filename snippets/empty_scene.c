@@ -3,7 +3,7 @@
 #include <cute.h>
 
 #define SCENE_NAME empty_scene
-#define SCENE_VAR(TYPE, NAME) BGAME_PRIVATE_VAR(SCENE_NAME, TYPE, NAME)
+#define SCENE_VAR(TYPE, NAME) BGAME_SCENE_VAR(SCENE_NAME, TYPE, NAME)
 
 static void
 init(void) {

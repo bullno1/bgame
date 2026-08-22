@@ -24,6 +24,7 @@ typedef enum {
 } bgame_scene_op_t;
 
 AUTOLIST_DEFINE(bgame_scene_list)
+AUTOLIST_DEFINE(bgame_scene_var_list)
 
 BGAME_SCENE(bgame__empty) = { 0 };
 
@@ -75,6 +76,16 @@ bgame_find_scene(const char* name) {
 
 	BLOG_ERROR("Could not find scene: %s", name);
 	return bgame_empty_scene();
+}
+
+static void
+bgame_zero_scene_vars(const char* scene_name) {
+	AUTOLIST_FOREACH(entry, bgame_scene_var_list) {
+		const bgame_scene_var_t* var = entry->value_addr;
+		if (strcmp(var->scene, scene_name) == 0) {
+			memset(var->addr, 0, var->size);
+		}
+	}
 }
 
 void
@@ -144,6 +155,7 @@ bgame_scene_update_internal(bool run_update) {
 				bgame_scene_mgr.scene_state = BGAME_SCENE_CLEANING_UP;
 				current_scene.def->cleanup();
 			}
+			bgame_zero_scene_vars(current_scene.name);
 
 			// Change current scene
 			*current_entry = bgame_scene_mgr.next_scene;
@@ -190,9 +202,9 @@ bgame_scene_update_internal(bool run_update) {
 				BLOG_INFO("Cleaning up scene `%s`", current_entry->name);
 				bgame_scene_mgr.scene_state = BGAME_SCENE_CLEANING_UP;
 				current_scene.def->cleanup();
-
-				*current_entry = (bgame_scene_entry_t){ 0 };
 			}
+			bgame_zero_scene_vars(current_scene.name);
+			*current_entry = (bgame_scene_entry_t){ 0 };
 
 			// Move back to previous scene
 			if (bgame_scene_mgr.current_scene_index > 0) {

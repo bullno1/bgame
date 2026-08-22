@@ -3,7 +3,9 @@
 
 #include <autolist.h>
 #include <bmacro.h>
+#include <bgame/reloadable.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum {
 	BGAME_SCENE_INITIALIZING,
@@ -26,6 +28,31 @@ typedef struct bgame_scene_s {
 
 #define BGAME_SCENE(NAME) \
 	AUTOLIST_ENTRY_EX(bgame_scene_list, bgame_scene_def_t, NAME, BCONCAT(bgame_scene_, NAME))
+
+typedef struct bgame_scene_var_s {
+	const char* scene;
+	void* addr;
+	size_t size;
+} bgame_scene_var_t;
+
+/**
+ * Declare a scene-private variable.
+ *
+ * The variable persists across hot reloads but is zeroed when the scene exits
+ * (switch or pop), right after its `cleanup` callback returns.
+ */
+#define BGAME_SCENE_VAR(SCENE, TYPE, NAME) \
+	BGAME_PRIVATE_VAR(SCENE, TYPE, NAME) \
+	static const bgame_scene_var_t BCONCAT(bgame__scene_var_, NAME) = { \
+		.scene = BSTRINGIFY(SCENE), \
+		.addr = &NAME, \
+		.size = sizeof(NAME), \
+	}; \
+	AUTOLIST_ADD_ENTRY( \
+		bgame_scene_var_list, \
+		BCONCAT(SCENE, BCONCAT(_, NAME)), \
+		BCONCAT(bgame__scene_var_, NAME) \
+	)
 
 typedef struct bgame_scene_reg_s {
 	const char* name;
