@@ -1,6 +1,7 @@
 #include "internal.h"
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
+#include <bmacro.h>
 #include <blog.h>
 #include "loader_interface.h"
 
@@ -16,9 +17,15 @@ const char* bgame_entry_file = __FILE__;
 
 #if BGAME_RELOADABLE
 
-static int bgame_reload_block_counter = 0;
+#ifndef BGAME_MAX_RELOAD_VETOES
+#	define BGAME_MAX_RELOAD_VETOES 16
+#endif
+
+static int bgame_num_reload_blockers = 0;
+static int bgame_num_reload_vetoes = 0;
 static bgame_loader_interface_t* bgame_loader_interface = NULL;
 static bgame_handle_map_t bgame_reload_blockers = { 0 };
+static bgame_reload_blocker_t bgame_reload_vetoes[BGAME_MAX_RELOAD_VETOES];
 
 static void
 bgame_update(bgame_loader_interface_t* interface) {
@@ -28,7 +35,12 @@ bgame_update(bgame_loader_interface_t* interface) {
 
 static bool
 bgame_is_reload_blocked(bgame_loader_interface_t* interface) {
-	return bgame_reload_block_counter > 0;
+	if (interface->app.check_reload) {
+		bgame_num_reload_vetoes = 0;
+		interface->app.check_reload();
+	}
+
+	return bgame_num_reload_blockers > 0 || bgame_num_reload_vetoes > 0;
 }
 
 static void
@@ -36,7 +48,14 @@ bgame_explain_reload_blocked(bgame_loader_interface_t* interface) {
 	BGAME_HANDLE_MAP_FOREACH(bgame_reload_blocker_t, blocker, &bgame_reload_blockers) {
 		blog_write(
 			BLOG_LEVEL_DEBUG, blocker->file, blocker->line,
-			"<-- Blocking reload"
+			"<-- Reload blocked"
+		);
+	}
+
+	for (int i = 0; i < bgame_num_reload_vetoes; ++i) {
+		blog_write(
+			BLOG_LEVEL_DEBUG, bgame_reload_vetoes[i].file, bgame_reload_vetoes[i].line,
+			"<-- Reload vetoed"
 		);
 	}
 }
@@ -50,14 +69,24 @@ bgame_block_reload_at(const char* file, int line) {
 	};
 	bgame_handle_t handle = bgame_handle_map_alloc(&bgame_reload_blockers, blocker);
 
-	++bgame_reload_block_counter;
+	++bgame_num_reload_blockers;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, file, line,
-		"<-- Reload block added (num blockers: %d)", bgame_reload_block_counter
+		"<-- Reload block added (num blockers: %d)", bgame_num_reload_blockers
 	);
 
 	return (bgame_reload_block_t){ handle };
+}
+
+void
+bgame_veto_reload_at(const char* file, int line) {
+	if (bgame_num_reload_vetoes < BCOUNT_OF(bgame_reload_vetoes)) {
+		bgame_reload_vetoes[bgame_num_reload_vetoes++] = (bgame_reload_blocker_t){
+			.file = file,
+			.line = line,
+		};
+	}
 }
 
 void
@@ -65,19 +94,14 @@ bgame_unblock_reload(bgame_reload_block_t block) {
 	bgame_reload_blocker_t* blocker = bgame_handle_map_free(&bgame_reload_blockers, block.internal);
 	if (blocker == NULL) { return; }
 
-	--bgame_reload_block_counter;
+	--bgame_num_reload_blockers;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, blocker->file, blocker->line,
-		"<-- Reload block removed (num blockers: %d)", bgame_reload_block_counter
+		"<-- Reload block removed (num blockers: %d)", bgame_num_reload_blockers
 	);
 
 	bgame_free(blocker, bgame_default_allocator);
-}
-
-bool
-bgame_is_reload_enabled(void) {
-	return bgame_reload_block_counter == 0;
 }
 
 void
@@ -169,11 +193,6 @@ bgame_block_reload_at(const char* file, int line) {
 
 void
 bgame_unblock_reload(bgame_reload_block_t block) {
-}
-
-bool
-bgame_is_reload_enabled(void) {
-	return false;
 }
 
 #endif

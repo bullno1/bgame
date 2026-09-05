@@ -4,6 +4,9 @@
 #include <cute_coroutine.h>
 #include <bgame/reloadable.h>
 #include <bent.h>
+#include <barena.h>
+#include <stdarg.h>
+#include <bmacro.h>
 
 static bent_t bgame__last_entity;
 
@@ -71,5 +74,45 @@ bgame_resume_coro(bgame_coro_t* coro) {
 }
 
 #define bgame_spawn_coro(CORO, FN) bgame_spawn_coro_at(CORO, FN, __FILE__, __LINE__)
+
+static inline const char*
+bgame_arena_vfmt(barena_t* arena, int* len_out, const char* fmt, va_list args) {
+	char fmt_buf[512];
+	va_list args_copy;
+	va_copy(args_copy, args);
+	int len = vsnprintf(fmt_buf, sizeof(fmt_buf), fmt, args_copy);
+
+	char* result = barena_memalign(arena, len + 1, _Alignof(char));
+	if (len >= (int)sizeof(fmt_buf)) {
+		vsnprintf(result, len + 1, fmt, args);
+	} else {
+		memcpy(result, fmt_buf, len + 1);
+	}
+
+	va_end(args_copy);
+
+	if (len_out != NULL) { *len_out = len; }
+	return result;
+}
+
+BFORMAT_ATTRIBUTE(2, 3)
+static inline const char*
+bgame_arena_fmt(barena_t* arena, const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	const char* result = bgame_arena_vfmt(arena, NULL, fmt, args);
+	va_end(args);
+	return result;
+}
+
+static inline const char*
+bgame_arena_strcpy(barena_t* arena, const char* str) {
+	if (str == NULL) { return NULL; }
+
+	size_t len = strlen(str);
+	char* copy = barena_memalign(arena, len + 1, _Alignof(char));
+	memcpy(copy, str, len + 1);
+	return copy;
+}
 
 #endif

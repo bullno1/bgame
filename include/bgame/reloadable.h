@@ -36,9 +36,11 @@ bgame_block_reload_at(const char* file, int line);
 void
 bgame_unblock_reload(bgame_reload_block_t block);
 
-bool
-bgame_is_reload_enabled(void);
+void
+bgame_veto_reload_at(const char* file, int line);
 
 #define bgame_block_reload() bgame_block_reload_at(__FILE__, __LINE__)
+
+#define bgame_veto_reload() bgame_veto_reload_at(__FILE__, __LINE__)
 
 #endif

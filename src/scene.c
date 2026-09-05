@@ -244,6 +244,14 @@ bgame_scene_update(void) {
 }
 
 void
+bgame_scene_check_reload(void) {
+	bgame_scene_reg_t current_scene = bgame_scene_mgr.current_scene;
+	if (current_scene.def->check_reload != NULL) {
+		return current_scene.def->check_reload();
+	}
+}
+
+void
 bgame_scene_before_reload(void) {
 	bgame_scene_reg_t current_scene = bgame_scene_mgr.current_scene;
 	if (current_scene.def->before_reload != NULL) {

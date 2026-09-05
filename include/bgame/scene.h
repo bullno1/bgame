@@ -20,8 +20,11 @@ typedef struct bgame_scene_s {
 	void (*init)(void);
 	void (*update)(void);
 	void (*cleanup)(void);
+
 	void (*suspend)(void);
 	void (*resume)(void);
+
+	void (*check_reload)(void);
 	void (*before_reload)(void);
 	void (*after_reload)(void);
 } bgame_scene_def_t;
@@ -94,6 +97,9 @@ bgame_scene_stack_depth(void);
 
 void
 bgame_scene_update(void);
+
+void
+bgame_scene_check_reload(void);
 
 void
 bgame_scene_before_reload(void);
