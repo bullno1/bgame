@@ -3,6 +3,7 @@
 
 #include <bgame/app.h>
 #include <stdbool.h>
+#include <bsfn.h>
 
 typedef struct bgame_loader_interface_s {
 	int argc;
@@ -11,6 +12,7 @@ typedef struct bgame_loader_interface_s {
 
 	bgame_app_t app;
 	void (*update)(struct bgame_loader_interface_s* interface);
+	bsfn_ctx_t* bsfn;
 } bgame_loader_interface_t;
 
 #endif

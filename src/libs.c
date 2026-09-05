@@ -8,6 +8,7 @@
 #include <bhash.h>
 #include <barray.h>
 #include <barena.h>
+#include <bsfn.h>
 
 #undef BARRAY_REALLOC
 #define BENT_LOG BLOG_DEBUG

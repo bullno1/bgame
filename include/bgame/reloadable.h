@@ -20,7 +20,10 @@
 #	define BGAME_VAR(TYPE, VAR) TYPE VAR
 #	define BGAME_PERSIST_VAR(NAME)
 #	define BGAME_PERSIST_VAR_EX(NAMESPACE, VAR)
+#	define BSFN_NO_RELOAD
 #endif
+
+#include <bsfn.h>
 
 void
 bgame_block_reload(void);

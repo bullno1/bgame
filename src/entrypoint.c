@@ -1,5 +1,6 @@
 #include "internal.h"
 #include <bgame/reloadable.h>
+#include <bgame/allocator.h>
 #include <blog.h>
 #include "loader_interface.h"
 
@@ -46,12 +47,21 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 	switch (op) {
 		case REMODULE_OP_LOAD:
 			bgame_on_load();
+
 			loader_interface->app = app;
 			loader_interface->update = bgame_update;
+
+			loader_interface->bsfn = bsfn_ctx_create(bgame_default_allocator);
+			bsfn_bind(loader_interface->bsfn);
+
 			BLOG_INFO("App loaded");
 			break;
 		case REMODULE_OP_UNLOAD:
 			BLOG_INFO("Unloading app");
+
+			bsfn_unbind(loader_interface->bsfn);
+			bsfn_ctx_destroy(loader_interface->bsfn);
+
 			bgame_on_unload();
 			break;
 		case REMODULE_OP_BEFORE_RELOAD:
@@ -64,12 +74,16 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 		case REMODULE_OP_AFTER_RELOAD:
 			bgame_after_reload();
 
-			BLOG_INFO("App reloaded");
 			loader_interface->app = app;
 			loader_interface->update = bgame_update;
+
+			bsfn_bind(loader_interface->bsfn);
+
 			if (app.after_reload != NULL) {
 				app.after_reload();
 			}
+			BLOG_INFO("App reloaded");
+
 			BLOG_INFO("Reinitializing");
 			app.init(loader_interface->argc, loader_interface->argv);
 			BLOG_INFO("Reinitialized");
