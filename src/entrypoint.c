@@ -189,10 +189,15 @@ bgame_static(bgame_app_t app, int argc, const char** argv) {
 
 bgame_reload_block_t
 bgame_block_reload_at(const char* file, int line) {
+	return (bgame_reload_block_t){ 0 };
 }
 
 void
 bgame_unblock_reload(bgame_reload_block_t block) {
+}
+
+void
+bgame_veto_reload_at(const char* file, int line) {
 }
 
 #endif
