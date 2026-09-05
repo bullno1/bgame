@@ -35,11 +35,17 @@ reload_module(const char* path, void* module) {
 	remodule_reload(module);
 }
 
+static bool
+is_reload_blocked(bgame_loader_interface_t* loader_interface) {
+	return loader_interface->is_reload_blocked != NULL
+		&& loader_interface->is_reload_blocked(loader_interface);
+}
+
 int
 bgame_main(int argc, const char* argv[]) {
     const char* last_separator = strrchr(argv[0], PATH_SEPARATOR);
     const char* exe_name = last_separator != NULL ? last_separator + 1 : argv[0];
-	char* dot = strrchr(exe_name, '.');
+	const char* dot = strrchr(exe_name, '.');
 	size_t basename_len = dot != NULL ? dot - exe_name: strlen(exe_name);
 
 	char module_name[128];
@@ -54,7 +60,6 @@ bgame_main(int argc, const char* argv[]) {
 	bgame_loader_interface_t loader_interface = {
 		.argc = argc,
 		.argv = argv,
-		.reload_blocked = false,
 	};
 
 	remodule_t* module = remodule_load(module_name, &loader_interface);
@@ -71,7 +76,7 @@ bgame_main(int argc, const char* argv[]) {
 			reload_needed = true;
 
 			if (
-				loader_interface.reload_blocked
+				is_reload_blocked(&loader_interface)
 				&&
 				loader_interface.explain_reload_blocked != NULL
 			) {
@@ -79,7 +84,7 @@ bgame_main(int argc, const char* argv[]) {
 			}
 		}
 
-		if (reload_needed && !loader_interface.reload_blocked) {
+		if (reload_needed && !is_reload_blocked(&loader_interface)) {
 			bresmon_reload(monitor);
 			reload_needed = false;
 		}

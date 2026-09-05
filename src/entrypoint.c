@@ -26,6 +26,11 @@ bgame_update(bgame_loader_interface_t* interface) {
 	interface->app.update();
 }
 
+static bool
+bgame_is_reload_blocked(bgame_loader_interface_t* interface) {
+	return bgame_reload_block_counter > 0;
+}
+
 static void
 bgame_explain_reload_blocked(bgame_loader_interface_t* interface) {
 	BGAME_HANDLE_MAP_FOREACH(bgame_reload_blocker_t, blocker, &bgame_reload_blockers) {
@@ -46,7 +51,6 @@ bgame_block_reload_at(const char* file, int line) {
 	bgame_handle_t handle = bgame_handle_map_alloc(&bgame_reload_blockers, blocker);
 
 	++bgame_reload_block_counter;
-	bgame_loader_interface->reload_blocked = true;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, file, line,
@@ -62,7 +66,6 @@ bgame_unblock_reload(bgame_reload_block_t block) {
 	if (blocker == NULL) { return; }
 
 	--bgame_reload_block_counter;
-	bgame_loader_interface->reload_blocked = bgame_reload_block_counter > 0;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, blocker->file, blocker->line,
@@ -87,6 +90,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 
 			loader_interface->app = app;
 			loader_interface->update = bgame_update;
+			loader_interface->is_reload_blocked = bgame_is_reload_blocked;
 			loader_interface->explain_reload_blocked = bgame_explain_reload_blocked;
 
 			loader_interface->bsfn = bsfn_ctx_create(bgame_default_allocator);
@@ -121,6 +125,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 
 			loader_interface->app = app;
 			loader_interface->update = bgame_update;
+			loader_interface->is_reload_blocked = bgame_is_reload_blocked;
 			loader_interface->explain_reload_blocked = bgame_explain_reload_blocked;
 
 			bsfn_bind(loader_interface->bsfn);

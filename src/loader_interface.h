@@ -9,7 +9,7 @@ typedef struct bgame_loader_interface_s {
 	int argc;
 	const char** argv;
 
-	bool reload_blocked;
+	bool (*is_reload_blocked)(struct bgame_loader_interface_s* interface);
 	void (*explain_reload_blocked)(struct bgame_loader_interface_s* interface);
 
 	bgame_app_t app;
