@@ -1,3 +1,7 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#	define _GNU_SOURCE 1
+#endif
+
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
 #include <blog.h>

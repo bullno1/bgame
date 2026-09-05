@@ -10,6 +10,7 @@ set(SOURCES
 	"src/allocator/cute_framework.c"
 	"src/entrypoint.c"
 	"src/scene.c"
+	"src/handle.c"
 	"src/shader.c"
 	"src/metrics.c"
 	"src/asset.c"

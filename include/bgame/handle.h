@@ -13,7 +13,7 @@ struct bgame_allocator_s;
 		bgame_handle_i < barray_len((MAP)->slots); \
 		++bgame_handle_i \
 	) \
-		for (TYPE VAR = ((MAP)->slots[bgame_handle_i]).ptr; VAR != NULL; VAR = NULL)
+		for (TYPE* VAR = ((MAP)->slots[bgame_handle_i]).ptr; VAR != NULL; VAR = NULL)
 
 typedef struct {
 	uint32_t index;
@@ -62,7 +62,7 @@ bgame_handle_map_realloc(
 void*
 bgame_handle_map_resolve(bgame_handle_map_t* handle_map, bgame_handle_t handle);
 
-void
+void*
 bgame_handle_map_free(bgame_handle_map_t* handle_map, bgame_handle_t handle);
 
 #endif

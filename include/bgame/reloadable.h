@@ -2,6 +2,7 @@
 #define BGAME_RELOADABLE_H
 
 #include <stdbool.h>
+#include "handle.h"
 
 #ifndef BGAME_RELOADABLE
 #	define BGAME_RELOADABLE 0
@@ -27,13 +28,17 @@
 
 #include <bsfn.h>
 
-void
-bgame_block_reload(void);
+typedef struct { bgame_handle_t internal; } bgame_reload_block_t;
+
+bgame_reload_block_t
+bgame_block_reload_at(const char* file, int line);
 
 void
-bgame_unblock_reload(void);
+bgame_unblock_reload(bgame_reload_block_t block);
 
 bool
 bgame_is_reload_enabled(void);
+
+#define bgame_block_reload() bgame_block_reload_at(__FILE__, __LINE__)
 
 #endif

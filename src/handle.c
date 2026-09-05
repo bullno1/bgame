@@ -63,13 +63,15 @@ bgame_handle_map_resolve(bgame_handle_map_t* handle_map, bgame_handle_t handle) 
 	return slot != NULL ? slot->ptr : NULL;
 }
 
-void
+void*
 bgame_handle_map_free(bgame_handle_map_t* handle_map, bgame_handle_t handle) {
 	bgame_handle_slot_t* slot = bgame_handle_map_resolve_slot(handle_map, handle);
-	if (slot == NULL) { return; }
+	if (slot == NULL) { return NULL; }
 
+	void* ptr = slot->ptr;
 	slot->gen += 1;
 	slot->next = handle_map->next_free;
 	slot->ptr = NULL;
 	handle_map->next_free = handle.index;
+	return ptr;
 }

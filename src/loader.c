@@ -1,3 +1,7 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#	define _GNU_SOURCE 1
+#endif
+
 #define REMODULE_HOST_IMPLEMENTATION
 #include <bgame/reloadable.h>
 
@@ -65,6 +69,14 @@ bgame_main(int argc, const char* argv[]) {
 
 		if (bresmon_should_reload(monitor, false)) {
 			reload_needed = true;
+
+			if (
+				loader_interface.reload_blocked
+				&&
+				loader_interface.explain_reload_blocked != NULL
+			) {
+				loader_interface.explain_reload_blocked(&loader_interface);
+			}
 		}
 
 		if (reload_needed && !loader_interface.reload_blocked) {

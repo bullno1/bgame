@@ -45,24 +45,31 @@ static bent_t bgame__last_entity;
 BGAME_DECLARE_SCENE_ALLOCATOR(BGAME_SCENE_NAME)
 #endif
 
+typedef struct {
+	CF_Coroutine coro;
+	bgame_reload_block_t reload_block;
+} bgame_coro_t;
+
 static inline void
-bgame_spawn_coro(CF_Coroutine* coro, CF_CoroutineFn fn, void* arg) {
-	if (coro->id == 0) {
-		*coro = cf_make_coroutine(fn, 0, arg);
-		bgame_block_reload();
+bgame_spawn_coro_at(bgame_coro_t* coro, CF_CoroutineFn fn, void* arg, const char* file, int line) {
+	if (coro->coro.id == 0) {
+		coro->coro = cf_make_coroutine(fn, 0, arg);
+		coro->reload_block = bgame_block_reload();
 	}
 }
 
 static inline void
-bgame_resume_coro(CF_Coroutine* coro) {
-	if (coro->id != 0) {
-		cf_coroutine_resume(*coro);
-		if (cf_coroutine_state(*coro) == CF_COROUTINE_STATE_DEAD) {
-			bgame_unblock_reload();
-			cf_destroy_coroutine(*coro);
-			coro->id = 0;
+bgame_resume_coro(bgame_coro_t* coro) {
+	if (coro->coro.id != 0) {
+		cf_coroutine_resume(coro->coro);
+		if (cf_coroutine_state(coro->coro) == CF_COROUTINE_STATE_DEAD) {
+			bgame_unblock_reload(coro->reload_block);
+			cf_destroy_coroutine(coro->coro);
+			coro->coro.id = 0;
 		}
 	}
 }
+
+#define bgame_spawn_coro(CORO, FN) bgame_spawn_coro_at(CORO, FN, __FILE__, __LINE__)
 
 #endif
