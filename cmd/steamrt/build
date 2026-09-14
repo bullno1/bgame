@@ -1,0 +1,26 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+. "${CMD_DIR}/sdk.sh"
+
+OUT=".build/steamrt/${BUILD_DIR}"
+mkdir -p .build/steamrt
+
+if [ ! -f "${OUT}/build.ninja" ]
+then
+	steamsdk cmake \
+		-G "Ninja" \
+		-S . \
+		-B "${OUT}" \
+		-DCMAKE_TOOLCHAIN_FILE="${BGAME_DIR}/cmake/steamrt.cmake" \
+		-DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+		-DRELOADABLE="${RELOADABLE}" \
+		-DPLATFORM_NAME="steamrt" \
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_C_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+fi
+
+steamsdk cmake --build "${OUT}"

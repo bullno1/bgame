@@ -1,0 +1,6 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+
+gdb -ex run --args "bin/linux/${BUILD_DIR}/${APP}" "$@"

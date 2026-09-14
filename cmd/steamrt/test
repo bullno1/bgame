@@ -1,0 +1,8 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+. "${CMD_DIR}/sdk.sh"
+require_tests
+
+steamsdk "bin/steamrt/${BUILD_DIR}/${TESTS}" "$@"

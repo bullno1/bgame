@@ -1,0 +1,25 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+RELOADABLE=OFF
+. "${CMD_DIR}/../common.sh"
+
+OUT=".build/web/${BUILD_TYPE}"
+
+if [ ! -f "${OUT}/build.ninja" ]
+then
+	embuilder build libc sdl3
+	emcmake cmake \
+		-G "Ninja" \
+		-S . \
+		-B "${OUT}" \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+		-DRELOADABLE=OFF \
+		-DPLATFORM_NAME="web" \
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+		-DCMAKE_C_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+fi
+
+cmake --build "${OUT}"

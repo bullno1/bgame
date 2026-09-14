@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+require_tests
+
+"bin/linux/${BUILD_DIR}/${TESTS}" "$@"

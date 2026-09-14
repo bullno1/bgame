@@ -1,0 +1,24 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+
+OUT=".build/linux/${BUILD_DIR}"
+
+if [ ! -f "${OUT}/build.ninja" ]
+then
+	cmake \
+		-G "Ninja" \
+		-S . \
+		-B "${OUT}" \
+		-DCMAKE_TOOLCHAIN_FILE="${BGAME_DIR}/cmake/linux.cmake" \
+		-DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+		-DRELOADABLE="${RELOADABLE}" \
+		-DPLATFORM_NAME="linux" \
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_C_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+fi
+
+cmake --build "${OUT}"
