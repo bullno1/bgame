@@ -8,6 +8,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_DEBUG_INIT ${CLANG_SANITIZE})
 set(CMAKE_MODULE_LINKER_FLAGS_DEBUG_INIT ${CLANG_SANITIZE})
 set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS}    ${ASAN_FLAGS}")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_FLAGS}")
+add_compile_options("-fno-omit-frame-pointer")
 add_link_options("-Wl,--build-id")
 
 # SteamSDK has an older cmake version
