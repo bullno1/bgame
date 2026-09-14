@@ -23,6 +23,19 @@ function hideOverlay() {
 	overlayElement.style.visibility = 'hidden';
 }
 
+// SDL only re-reads devicePixelRatio inside the browser's resize handler. Most browsers
+// fire a resize when the page is zoomed or moved to a display with a different ratio,
+// but not all do, so forward ratio changes as a synthetic resize to keep the canvas
+// backing store at native resolution.
+function watchDevicePixelRatio() {
+	const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+	query.addEventListener('change', () => {
+		window.dispatchEvent(new Event('resize'));
+		watchDevicePixelRatio();
+	}, { once: true });
+}
+watchDevicePixelRatio();
+
 /**
  * Fetch a WASM file with progress tracking and instantiate it.
  * @param {string} wasmUrl - URL of the WASM file.
