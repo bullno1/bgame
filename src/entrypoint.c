@@ -2,6 +2,7 @@
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
 #include <bmacro.h>
+#include <barray.h>
 #include <blog.h>
 #include "loader_interface.h"
 
@@ -21,10 +22,10 @@ const char* bgame_entry_file = __FILE__;
 #	define BGAME_MAX_RELOAD_VETOES 16
 #endif
 
-static int bgame_num_reload_blockers = 0;
 static int bgame_num_reload_vetoes = 0;
 static bgame_loader_interface_t* bgame_loader_interface = NULL;
-static bgame_handle_map_t bgame_reload_blockers = { 0 };
+static bhandle_map_t bgame_reload_blocker_handles = { 0 };
+static barray(bgame_reload_blocker_t) bgame_reload_blockers = NULL;
 static bgame_reload_blocker_t bgame_reload_vetoes[BGAME_MAX_RELOAD_VETOES];
 
 static void
@@ -40,12 +41,12 @@ bgame_is_reload_blocked(bgame_loader_interface_t* interface) {
 		interface->app.check_reload();
 	}
 
-	return bgame_num_reload_blockers > 0 || bgame_num_reload_vetoes > 0;
+	return bhandle_count(&bgame_reload_blocker_handles) > 0 || bgame_num_reload_vetoes > 0;
 }
 
 static void
 bgame_explain_reload_blocked(bgame_loader_interface_t* interface) {
-	BGAME_HANDLE_MAP_FOREACH(bgame_reload_blocker_t, blocker, &bgame_reload_blockers) {
+	BHANDLE_FOREACH_PTR(handle, blocker, &bgame_reload_blocker_handles, bgame_reload_blockers) {
 		blog_write(
 			BLOG_LEVEL_DEBUG, blocker->file, blocker->line,
 			"<-- Reload blocked"
@@ -60,20 +61,31 @@ bgame_explain_reload_blocked(bgame_loader_interface_t* interface) {
 	}
 }
 
+static void
+bgame_cleanup_reload_blockers(void) {
+	bhandle_free(&bgame_reload_blocker_handles, bgame_default_allocator);
+	barray_free(bgame_reload_blockers, bgame_default_allocator);
+}
+
 bgame_reload_block_t
 bgame_block_reload_at(const char* file, int line) {
-	bgame_reload_blocker_t* blocker = bgame_malloc(sizeof(bgame_reload_blocker_t), bgame_default_allocator);
-	*blocker = (bgame_reload_blocker_t){
+	bhandle_t handle = bhandle_new(&bgame_reload_blocker_handles, bgame_default_allocator);
+
+	// Keep the blocker storage in sync with the handle map's capacity
+	bhandle_index_t capacity = bhandle_capacity(&bgame_reload_blocker_handles);
+	if (barray_len(bgame_reload_blockers) < capacity) {
+		barray_resize(bgame_reload_blockers, capacity, bgame_default_allocator);
+	}
+
+	bgame_reload_blockers[handle.index] = (bgame_reload_blocker_t){
 		.file = file,
 		.line = line,
 	};
-	bgame_handle_t handle = bgame_handle_map_alloc(&bgame_reload_blockers, blocker);
-
-	++bgame_num_reload_blockers;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, file, line,
-		"<-- Reload block added (num blockers: %d)", bgame_num_reload_blockers
+		"<-- Reload block added (num blockers: %u)",
+		(unsigned int)bhandle_count(&bgame_reload_blocker_handles)
 	);
 
 	return (bgame_reload_block_t){ handle };
@@ -91,17 +103,17 @@ bgame_veto_reload_at(const char* file, int line) {
 
 void
 bgame_unblock_reload(bgame_reload_block_t block) {
-	bgame_reload_blocker_t* blocker = bgame_handle_map_free(&bgame_reload_blockers, block.internal);
+	bgame_reload_blocker_t* blocker = bhandle_at(
+		bgame_reload_blockers,
+		bhandle_destroy(&bgame_reload_blocker_handles, block.internal)
+	);
 	if (blocker == NULL) { return; }
-
-	--bgame_num_reload_blockers;
 
 	blog_write(
 		BLOG_LEVEL_DEBUG, blocker->file, blocker->line,
-		"<-- Reload block removed (num blockers: %d)", bgame_num_reload_blockers
+		"<-- Reload block removed (num blockers: %u)",
+		(unsigned int)bhandle_count(&bgame_reload_blocker_handles)
 	);
-
-	bgame_free(blocker, bgame_default_allocator);
 }
 
 void
@@ -120,14 +132,12 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 			loader_interface->bsfn = bsfn_ctx_create(bgame_default_allocator);
 			bsfn_bind(loader_interface->bsfn);
 
-			bgame_handle_map_init(&bgame_reload_blockers, bgame_default_allocator);
-
 			BLOG_INFO("App loaded");
 			break;
 		case REMODULE_OP_UNLOAD:
 			BLOG_INFO("Unloading app");
 
-			bgame_handle_map_cleanup(&bgame_reload_blockers);
+			bgame_cleanup_reload_blockers();
 
 			bsfn_unbind(loader_interface->bsfn);
 			bsfn_ctx_destroy(loader_interface->bsfn);
@@ -142,7 +152,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 				app.before_reload();
 			}
 
-			bgame_handle_map_cleanup(&bgame_reload_blockers);
+			bgame_cleanup_reload_blockers();
 			break;
 		case REMODULE_OP_AFTER_RELOAD:
 			bgame_after_reload();
@@ -153,8 +163,6 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 			loader_interface->explain_reload_blocked = bgame_explain_reload_blocked;
 
 			bsfn_bind(loader_interface->bsfn);
-
-			bgame_handle_map_init(&bgame_reload_blockers, bgame_default_allocator);
 
 			if (app.after_reload != NULL) {
 				app.after_reload();

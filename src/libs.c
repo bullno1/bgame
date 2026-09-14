@@ -11,6 +11,7 @@
 #define BLIB_IMPLEMENTATION
 #include <bhash.h>
 #include <barray.h>
+#include <bhandle.h>
 #include <barena.h>
 #include <bsfn.h>
 
