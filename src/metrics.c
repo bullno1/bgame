@@ -56,3 +56,7 @@ bgame_get_rate(const bgame_metric_decl_t* counter, bgame_rate_sampler_t* sampler
 		return 0.0;
 	}
 }
+
+BGAME_DEFINE_METRIC(bgame_num_draw_calls) = {
+	.type = BGAME_METRIC_GAUGE,
+};

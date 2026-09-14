@@ -71,4 +71,6 @@ bgame_get_rate(const bgame_metric_decl_t* counter, bgame_rate_sampler_t* sampler
 
 AUTOLIST_DECLARE(bgame__metrics)
 
+BGAME_DECLARE_METRIC(bgame_num_draw_calls)
+
 #endif
