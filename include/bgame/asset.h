@@ -17,7 +17,7 @@
 	bgame_asset_type_t NAME
 #endif
 
-#define BGAME_DEFINE_ASSET(NAME, TYPE, DATA_TYPE) \
+#define BGAME_DEFINE_ASSET(NAME, TYPE, DATA_TYPE, ...) \
 	DATA_TYPE NAME = { 0 }; \
 	extern bgame_asset_meta_t NAME##_meta; \
 	static bgame_asset_def_t NAME##_def = { \
@@ -27,7 +27,16 @@
 		.type = &TYPE, \
 	}; \
 	AUTOLIST_ADD_ENTRY(bgame__asset_list, NAME, NAME##_def) \
-	bgame_asset_meta_t NAME##_meta
+	bgame_asset_meta_t NAME##_meta = { __VA_ARGS__ }
+
+#define BGAME_DECLARE_ASSET(NAME, TYPE, DATA_TYPE, ...) \
+	extern DATA_TYPE NAME;
+
+#ifndef BGAME_DEFINE_ASSETS
+#	define BGAME_ASSET BGAME_DECLARE_ASSET
+#else
+#	define BGAME_ASSET BGAME_DEFINE_ASSET
+#endif
 
 #define BGAME_FOREACH_DEFINED_ASSET(ITR) \
 	AUTOLIST_FOREACH(bgame__asset_itr, bgame__asset_list) \

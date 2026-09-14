@@ -4,6 +4,12 @@
 #include <cute_graphics.h>
 #include <cute_draw.h>
 
+#ifndef BGAME_DEFINE_ASSETS
+#	define BGAME_SHADER(NAME) extern CF_Shader NAME
+#else
+#	define BGAME_SHADER(NAME) CF_Shader NAME
+#endif
+
 // Shader is special in the sense that it's both code and data.
 // It's (re)compiled with cute-shaderc and trigger a hot code reload.
 // But to reupload it to the GPU only on change requires a bit of special handling
