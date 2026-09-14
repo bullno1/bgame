@@ -77,7 +77,8 @@ bgame_ui_measure_text(
 	void* userdata
 ) {
 	bgame_ui_begin_text(config);
-	CF_V2 size = cf_text_size(text.chars, text.length);
+	CF_V2 size;
+	size = cf_text_size(text.chars, text.length);
 	bgame_ui_end_text();
 
 	return (Clay_Dimensions){ .width = size.x, .height = size.y };

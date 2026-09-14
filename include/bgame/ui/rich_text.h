@@ -2,6 +2,7 @@
 #define BGAME_UI_RICH_TEXT_H
 
 #include "../ui.h"
+#include "../asset/font.h"
 
 typedef enum {
 	BGAME_UI_RICH_TEXT_WRAP = 0,
@@ -19,7 +20,7 @@ typedef struct {
 	bgame_ui_rich_text_justify_t justify;
 	const char* text;
 	int text_len;
-	uint16_t font_id;
+	const bgame_font_t* font;
 	float font_size;
 	int font_blur;
 	Clay_Color color;

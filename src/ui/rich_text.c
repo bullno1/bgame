@@ -4,7 +4,7 @@
 
 static void
 bgame_ui_push_text_config(const bgame_ui_rich_text_t* config, float wrap_width) {
-	cf_push_font(bgame_get_ui_font_name(config->font_id));
+	cf_push_font(config->font->name);
 	cf_push_font_size(config->font_size);
 	if (config->sizing == BGAME_UI_RICH_TEXT_WRAP) {
 		cf_push_text_wrap_width(wrap_width);
