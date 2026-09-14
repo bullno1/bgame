@@ -37,6 +37,7 @@ compile_draw_shader(
 add_library(bgame STATIC "${SOURCES}")
 target_compile_definitions(bgame PUBLIC BGAME_RELOADABLE=$<IF:$<BOOL:${RELOADABLE}>,1,0>)
 target_include_directories(bgame PUBLIC include)
+set_target_properties(bgame PROPERTIES POSITION_INDEPENDENT_CODE "${RELOADABLE}")
 target_link_libraries(bgame PUBLIC
 	cute
 	$<$<BOOL:${RELOADABLE}>:remodule>
