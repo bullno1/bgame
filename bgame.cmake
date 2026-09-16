@@ -1,6 +1,4 @@
 option(RELOADABLE "Is the program reloadable" ON)
-set(COSMO_CUTE_SHADERC_VERSION "1.1.0-644723f+build.1" CACHE STRING "cosmo-cute-shaderc version")
-set(COSMO_CUTE_SHADERC_SHA256 "98cd93116c6d628e482806acc2df06a47493a96f2917a10a33110ff69170a742" CACHE STRING "SHA256 of cosmo-cute-shaderc")
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -84,19 +82,14 @@ function (compile_fragment_shader INPUT VAR_NAME OUTPUT)
 	)
 endfunction ()
 
-if (NOT CF_CUTE_SHADERC OR EMSCRIPTEN)
-	FetchContent_Declare(
-		cosmo-cute-shaderc
-		URL      "https://github.com/bullno1/cosmo-cute-shaderc/releases/download/v${COSMO_CUTE_SHADERC_VERSION}/cute-shaderc.tar.gz"
-		DOWNLOAD_EXTRACT_TIMESTAMP true
-		URL_HASH SHA256=${COSMO_CUTE_SHADERC_SHA256}
-	)
-	FetchContent_MakeAvailable(cosmo-cute-shaderc)
-	add_executable(cute-shaderc IMPORTED GLOBAL)
-	set_target_properties(cute-shaderc PROPERTIES
-		IMPORTED_LOCATION "${cosmo-cute-shaderc_SOURCE_DIR}/cute-shaderc.exe"
-	)
+if (NOT TARGET cute-shaderc)
+	message(FATAL_ERROR "bgame needs the cute-shaderc target from cute_framework: add_subdirectory(cute_framework) and keep CF_CUTE_SHADERC on")
 endif ()
+# It is a build tool, not part of the app, so keep it out of the shared
+# runtime output directory that prelude.cmake points at bin/.
+set_target_properties(cute-shaderc PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tools"
+)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
