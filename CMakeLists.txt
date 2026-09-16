@@ -54,3 +54,4 @@ target_include_directories(bgame-loader PRIVATE include)
 target_link_libraries(bgame-loader PUBLIC cute $<$<BOOL:${RELOADABLE}>:remodule> blibs)
 
 add_library(bgame-loader-stub STATIC "src/loader_stub.c")
+target_link_libraries(bgame-loader-stub PRIVATE cute)

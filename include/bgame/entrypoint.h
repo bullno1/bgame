@@ -25,14 +25,17 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata);
 
 #else
 
+#include <SDL3/SDL_init.h>
+
 #define BGAME_ENTRYPOINT(APP) \
-	int bgame_entry(int argc, const char** argv) { \
+	SDL_AppResult SDLCALL SDL_AppInit(void** appstate, int argc, char* argv[]) { \
 		bgame_entry_file = __FILE__; \
-		return bgame_static(APP, argc, argv); \
+		*appstate = &APP; \
+		return bgame_static(&APP, argc, (const char**)argv); \
 	}
 
-int
-bgame_static(bgame_app_t app, int argc, const char** argv);
+SDL_AppResult
+bgame_static(bgame_app_t* app, int argc, const char** argv);
 
 #endif
 

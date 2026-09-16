@@ -179,20 +179,32 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 #else
 
 #include <cute_app.h>
+#include <SDL3/SDL_init.h>
 
-int
-bgame_static(bgame_app_t app, int argc, const char** argv) {
+SDL_AppResult
+bgame_static(bgame_app_t* app, int argc, const char** argv) {
 	bgame_on_load();
 
-	app.init(argc, argv);
-	while (cf_app_is_running()) {
-		bgame_frame_allocator_next_frame();
-		app.update();
-	}
-	app.cleanup();
+	app->init(argc, argv);
+	return SDL_APP_CONTINUE;
+}
+
+SDLCALL SDL_AppResult
+SDL_AppIterate(bgame_app_t* app) {
+	if (!cf_app_is_running()) { return SDL_APP_SUCCESS; }
+
+	bgame_frame_allocator_next_frame();
+	app->update();
+
+	return cf_app_is_running() ? SDL_APP_CONTINUE : SDL_APP_SUCCESS;
+}
+
+SDLCALL void
+SDL_AppQuit(bgame_app_t* app, SDL_AppResult result) {
+	(void)result;
+	app->cleanup();
 
 	bgame_on_unload();
-	return 0;
 }
 
 bgame_reload_block_t

@@ -1,6 +1,3 @@
-extern int bgame_main(int argc, const char* argv[]);
-
-int
-main(int argc, const char* argv[]) {
-	return bgame_main(argc, argv);
-}
+#define SDL_MAIN_USE_CALLBACKS
+#define CF_MAIN
+#include <cute.h>
