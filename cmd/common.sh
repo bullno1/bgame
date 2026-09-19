@@ -43,3 +43,45 @@ require_tests() {
 		exit 1
 	fi
 }
+
+# Discards pending events on stdin until none arrive for WATCH_SETTLE seconds,
+# so a burst of writes (editor save, git checkout) triggers a single build.
+# `read` consumes one line at a time, so nothing beyond the burst is lost.
+WATCH_SETTLE=${WATCH_SETTLE:-0.3}
+drain_events() {
+	while timeout "${WATCH_SETTLE}" sh -c 'read -r _'
+	do
+		:
+	done
+}
+
+# Builds, then runs the tests when the platform has a test script and
+# bgame.env sets TESTS. Arguments are passed to the build script. Never fails,
+# so a broken build or test keeps the watch loop alive.
+build_and_test() {
+	echo "Building"
+	if ! "${CMD_DIR}/build" "$@"
+	then
+		echo "Build failed"
+		return 0
+	fi
+	if [ -n "${TESTS}" ] && [ -x "${CMD_DIR}/test" ]
+	then
+		echo "Testing"
+		"${CMD_DIR}/test" || echo "Tests failed"
+	fi
+	echo "Done"
+}
+
+# Builds once, then rebuilds whenever files under WATCH_DIRS change. Events
+# are drained between builds so each burst results in one build. Only returns
+# when inotifywait exits.
+watch_and_build() {
+	build_and_test "$@"
+	inotifywait -r -m -q -e CLOSE_WRITE ${WATCH_DIRS} | while read -r _
+	do
+		drain_events
+		clear
+		build_and_test "$@"
+	done
+}

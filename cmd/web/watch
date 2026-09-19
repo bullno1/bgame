@@ -4,12 +4,4 @@ CMD_DIR=$(dirname "$0")
 RELOADABLE=OFF
 . "${CMD_DIR}/../common.sh"
 
-"${CMD_DIR}/build" "$@" || true
-
-inotifywait -r -e CLOSE_WRITE -m ${WATCH_DIRS} | \
-	while read path action file
-	do
-		clear
-		"${CMD_DIR}/build" "$@" || true
-		echo "Done"
-	done
+watch_and_build "$@"
