@@ -67,40 +67,41 @@ function (add_bgame_app NAME SOURCES)
 	endif ()
 endfunction ()
 
-function (compile_draw_shader INPUT VAR_NAME OUTPUT)
+# compile_<type>_shader(INPUT VAR_NAME OUTPUT [INCLUDE_DIRS <dir>...] [DEPENDS <file>...])
+#
+# INCLUDE_DIRS: search path for `#include "file"`, on top of CF's builtin includes.
+# DEPENDS: the included files. cute-shaderc writes no depfile, so list them by hand or an
+# edit to one does not rebuild the shader.
+function (bgame_compile_shader TYPE INPUT VAR_NAME OUTPUT)
+	cmake_parse_arguments(PARSE_ARGV 4 ARG "" "" "INCLUDE_DIRS;DEPENDS")
+
+	set(INCLUDE_FLAGS "")
+	foreach (DIR IN LISTS ARG_INCLUDE_DIRS)
+		list(APPEND INCLUDE_FLAGS "-I${DIR}")
+	endforeach ()
+
 	add_custom_command(
 		OUTPUT ${OUTPUT}
 		COMMAND cute-shaderc
-			-type=draw
+			-type=${TYPE}
 			-varname=${VAR_NAME}
 			-oheader=${OUTPUT}
+			${INCLUDE_FLAGS}
 			${INPUT}
-		DEPENDS ${INPUT} cute-shaderc
+		DEPENDS ${INPUT} ${ARG_DEPENDS} cute-shaderc
 	)
+endfunction ()
+
+function (compile_draw_shader INPUT VAR_NAME OUTPUT)
+	bgame_compile_shader(draw ${INPUT} ${VAR_NAME} ${OUTPUT} ${ARGN})
 endfunction ()
 
 function (compile_vertex_shader INPUT VAR_NAME OUTPUT)
-	add_custom_command(
-		OUTPUT ${OUTPUT}
-		COMMAND cute-shaderc
-			-type=vertex
-			-varname=${VAR_NAME}
-			-oheader=${OUTPUT}
-			${INPUT}
-		DEPENDS ${INPUT} cute-shaderc
-	)
+	bgame_compile_shader(vertex ${INPUT} ${VAR_NAME} ${OUTPUT} ${ARGN})
 endfunction ()
 
 function (compile_fragment_shader INPUT VAR_NAME OUTPUT)
-	add_custom_command(
-		OUTPUT ${OUTPUT}
-		COMMAND cute-shaderc
-			-type=fragment
-			-varname=${VAR_NAME}
-			-oheader=${OUTPUT}
-			${INPUT}
-		DEPENDS ${INPUT} cute-shaderc
-	)
+	bgame_compile_shader(fragment ${INPUT} ${VAR_NAME} ${OUTPUT} ${ARGN})
 endfunction ()
 
 if (NOT TARGET cute-shaderc)
