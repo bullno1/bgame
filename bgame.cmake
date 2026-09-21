@@ -71,9 +71,9 @@ endfunction ()
 #
 # Compiles with bgame-shaderc (tools/shaderc.c) into a C header.
 #
-# BGAME_SHADER_STAGE is always defined, to one of the BGAME_SHADER_STAGE_* names that
-# include/glsl/bgame.glsl gives a value, and that directory is always on the search path:
-# `#include "bgame.glsl"` to get them along with Varying().
+# BGAME_SHADER_STAGE is always defined, as a plain number so it means the same with or without
+# any header. include/glsl is always on the search path: `#include "bgame.glsl"` for the
+# BGAME_SHADER_STAGE_* names of those numbers, along with Varying().
 #
 # INCLUDE_DIRS: search path for `#include "file"`, ahead of bgame's and CF's builtin includes.
 # DEFINES: more preprocessor macros.
@@ -88,8 +88,19 @@ function (bgame_compile_shader TYPE INPUT VAR_NAME OUTPUT)
 	endforeach ()
 	list(APPEND INCLUDE_FLAGS "-I${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include/glsl")
 
-	string(TOUPPER "${TYPE}" STAGE)
-	set(DEFINE_FLAGS "-DBGAME_SHADER_STAGE=BGAME_SHADER_STAGE_${STAGE}")
+	# Keep in sync with BGAME_SHADER_STAGE_* in include/glsl/bgame.glsl.
+	if (TYPE STREQUAL "vertex")
+		set(STAGE 0)
+	elseif (TYPE STREQUAL "fragment")
+		set(STAGE 1)
+	elseif (TYPE STREQUAL "compute")
+		set(STAGE 2)
+	elseif (TYPE STREQUAL "draw")
+		set(STAGE 3)
+	else ()
+		message(FATAL_ERROR "Unknown shader type: ${TYPE}")
+	endif ()
+	set(DEFINE_FLAGS "-DBGAME_SHADER_STAGE=${STAGE}")
 	foreach (DEFINE IN LISTS ARG_DEFINES)
 		list(APPEND DEFINE_FLAGS "-D${DEFINE}")
 	endforeach ()

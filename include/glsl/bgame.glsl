@@ -1,5 +1,6 @@
 // Shader helpers for bgame. compile_<type>_shader (bgame.cmake) puts this directory on the
-// include path and defines BGAME_SHADER_STAGE as one of the names below.
+// include path and defines BGAME_SHADER_STAGE as a number. These are the names of those
+// numbers: keep them in sync with bgame_compile_shader in bgame.cmake.
 
 #define BGAME_SHADER_STAGE_VERTEX   0
 #define BGAME_SHADER_STAGE_FRAGMENT 1
