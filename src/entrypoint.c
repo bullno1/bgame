@@ -93,7 +93,7 @@ bgame_block_reload_at(const char* file, int line) {
 
 void
 bgame_veto_reload_at(const char* file, int line) {
-	if (bgame_num_reload_vetoes < BCOUNT_OF(bgame_reload_vetoes)) {
+	if (bgame_num_reload_vetoes < (int)BCOUNT_OF(bgame_reload_vetoes)) {
 		bgame_reload_vetoes[bgame_num_reload_vetoes++] = (bgame_reload_blocker_t){
 			.file = file,
 			.line = line,

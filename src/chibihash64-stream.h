@@ -71,7 +71,7 @@ chibihash64_init(uint64_t seed)
 }
 
 static inline void
-chibihash64_append(ChibiHash64Ctx *ctx, void *keyIn, ptrdiff_t len)
+chibihash64_append(ChibiHash64Ctx *ctx, const void *keyIn, ptrdiff_t len)
 {
 	const unsigned char *p = (const unsigned char *)keyIn;
 	ptrdiff_t l = len;

@@ -15,6 +15,8 @@
 #include <barena.h>
 #include <bsfn.h>
 
+#undef BHANDLE_REALLOC
+
 #undef BARRAY_REALLOC
 #define BENT_LOG BLOG_DEBUG
 #define BENT_ASSERT CF_ASSERT
@@ -24,5 +26,15 @@
 #include <bresmon.h>
 #endif
 
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wextra-semi"
+#endif
+
 #define CLAY_IMPLEMENTATION
 #include <clay.h>
+
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif

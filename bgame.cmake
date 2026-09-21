@@ -3,6 +3,27 @@ option(RELOADABLE "Is the program reloadable" ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_EXTENSIONS OFF)
 
+if (MSVC)
+	add_compile_options(/W3 /WX)
+	add_compile_options(/wd4200) # Flexible array member is a standard feature since C99
+	add_compile_options(/wd4324) # _Alignof is intentional
+	add_compile_options(/wd4100) # Unreferenced parameter
+	add_compile_options(/wd4459) # Hiding global definition
+	add_compile_options(/experimental:c11atomics)  # Atomics
+	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+else()
+	add_compile_options(
+		-Wall -Wextra -pedantic -Werror
+		-Wno-unused-parameter
+		-Wno-unused-variable
+		-Wno-unused-function
+		-Wno-overlength-strings
+		-Wno-missing-field-initializers
+		-Wno-dollar-in-identifier-extension
+		-Wno-error=c23-extensions
+	)
+endif()
+
 function (add_bgame_app NAME SOURCES)
 	if (RELOADABLE)
 		add_library(${NAME} SHARED ${SOURCES})

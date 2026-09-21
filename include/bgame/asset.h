@@ -30,7 +30,7 @@
 	bgame_asset_meta_t NAME##_meta = { __VA_ARGS__ }
 
 #define BGAME_DECLARE_ASSET(NAME, TYPE, DATA_TYPE, ...) \
-	extern DATA_TYPE NAME;
+	extern DATA_TYPE NAME
 
 #ifndef BGAME_DEFINE_ASSETS
 #	define BGAME_ASSET BGAME_DECLARE_ASSET
