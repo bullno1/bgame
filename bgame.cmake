@@ -85,10 +85,14 @@ function (bgame_compile_shader TYPE INPUT VAR_NAME OUTPUT)
 	set(INCLUDE_FLAGS "")
 	foreach (DIR IN LISTS ARG_INCLUDE_DIRS)
 		list(APPEND INCLUDE_FLAGS "-I${DIR}")
+		# For the editor config, see bgame_write_glsl_config.
+		cmake_path(ABSOLUTE_PATH DIR BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
+		set_property(GLOBAL APPEND PROPERTY BGAME_SHADER_INCLUDE_DIRS "${DIR}")
 	endforeach ()
 	list(APPEND INCLUDE_FLAGS "-I${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include/glsl")
 
-	# Keep in sync with BGAME_SHADER_STAGE_* in include/glsl/bgame.glsl.
+	# Keep in sync with BGAME_SHADER_STAGE_* in include/glsl/bgame.glsl and the stageDefine
+	# block of cmake/glsl.json.in.
 	if (TYPE STREQUAL "vertex")
 		set(STAGE 0)
 	elseif (TYPE STREQUAL "fragment")
@@ -136,40 +140,71 @@ endfunction ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
-# CF's builtin shader includes (smooth_uv.shd and friends) only exist inside bgame-shaderc.
-# Editor tooling resolves #include on disk, so every build keeps a copy: add the directory to
-# the include path of a language server or of glslangValidator.
+# Editor support for shaders lives in one directory, for a language server or glslangValidator:
+#   builtins/    CF's builtin shader includes, dumped by every build
+#   config.json  the shader-language-server config, written by every configure
 #
-# Empty means .build/cf-builtins under the project root, next to the build directories the
-# cmd scripts create: one path for the editor whatever the platform or build type. Every
-# configuration dumps the same files there, and the tool only rewrites one whose content
-# changed.
-set(BGAME_SHADER_BUILTINS_DIR "" CACHE PATH
-	"Where CF's builtin shader includes are dumped for editor tooling. Empty: .build/cf-builtins under the project root")
-if (BGAME_SHADER_BUILTINS_DIR)
-	set(BGAME_SHADER_BUILTINS_OUT "${BGAME_SHADER_BUILTINS_DIR}")
+# Empty means .build/glsl under the project root, next to the build directories the cmd
+# scripts create: one path for the editor whatever the platform or build type. Every
+# configuration writes the same content there.
+set(BGAME_GLSL_DIR "" CACHE PATH
+	"Where editor support for shaders is written (builtins/, config.json). Empty: .build/glsl under the project root")
+if (BGAME_GLSL_DIR)
+	set(BGAME_GLSL_OUT "${BGAME_GLSL_DIR}")
 else ()
 	# Spelled with CMAKE_SOURCE_DIR: prelude.cmake points CMAKE_BINARY_DIR at the source tree.
-	set(BGAME_SHADER_BUILTINS_OUT "${CMAKE_SOURCE_DIR}/.build/cf-builtins")
+	set(BGAME_GLSL_OUT "${CMAKE_SOURCE_DIR}/.build/glsl")
 endif ()
+# A property as well: the deferred bgame_write_glsl_config runs in the top directory's scope,
+# which is not this one when a subdirectory includes this file.
+set_property(GLOBAL PROPERTY BGAME_GLSL_OUT "${BGAME_GLSL_OUT}")
 
+# CF's builtin shader includes (smooth_uv.shd and friends) only exist inside bgame-shaderc.
+# Editor tooling resolves #include on disk, so every build keeps a copy. The tool only
+# rewrites a file whose content changed.
+#
 # The stamp is the output rather than the files: their mtime only moves when CF changes them,
 # so a Makefile generator would find them older than a rebuilt tool on every build. It stays
 # in this configuration's build directory while the files are shared, or one configuration's
 # dump would mark it done for all the others. The tool is the only dependency since the
 # builtins are compiled into it.
-set(BGAME_SHADER_BUILTINS_STAMP "${CMAKE_CURRENT_BINARY_DIR}/cf-builtins.stamp")
+set(BGAME_GLSL_BUILTINS_STAMP "${CMAKE_CURRENT_BINARY_DIR}/glsl-builtins.stamp")
 add_custom_command(
-	OUTPUT "${BGAME_SHADER_BUILTINS_STAMP}"
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${BGAME_SHADER_BUILTINS_OUT}"
-	COMMAND bgame-shaderc --dump-builtins "${BGAME_SHADER_BUILTINS_OUT}"
-	COMMAND ${CMAKE_COMMAND} -E touch "${BGAME_SHADER_BUILTINS_STAMP}"
+	OUTPUT "${BGAME_GLSL_BUILTINS_STAMP}"
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${BGAME_GLSL_OUT}/builtins"
+	COMMAND bgame-shaderc --dump-builtins "${BGAME_GLSL_OUT}/builtins"
+	COMMAND ${CMAKE_COMMAND} -E touch "${BGAME_GLSL_BUILTINS_STAMP}"
 	DEPENDS bgame-shaderc
-	COMMENT "Dumping CF's builtin shader includes to ${BGAME_SHADER_BUILTINS_OUT}"
+	COMMENT "Dumping CF's builtin shader includes to ${BGAME_GLSL_OUT}/builtins"
 )
 add_custom_target(bgame-shader-builtins ALL
-	DEPENDS "${BGAME_SHADER_BUILTINS_STAMP}"
+	DEPENDS "${BGAME_GLSL_BUILTINS_STAMP}"
 )
+
+# config.json is the compile_commands.json of shaders: written from cmake/glsl.json.in,
+# launch the server with `--config-file` on it. The include path is what the build uses, in
+# the same order: every INCLUDE_DIRS given to compile_<type>_shader, then include/glsl, then
+# the builtins dumped above. All paths are absolute, so the server's `--cwd` does not matter.
+# One missing include directory makes the server reject the whole config, and the builtins
+# only exist after a build.
+function (bgame_write_glsl_config)
+	get_property(INCLUDE_DIRS GLOBAL PROPERTY BGAME_SHADER_INCLUDE_DIRS)
+	get_property(OUT_DIR GLOBAL PROPERTY BGAME_GLSL_OUT)
+
+	list(APPEND INCLUDE_DIRS
+		"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include/glsl"
+		"${OUT_DIR}/builtins"
+	)
+	list(REMOVE_DUPLICATES INCLUDE_DIRS)
+	list(TRANSFORM INCLUDE_DIRS PREPEND "\t\t\"")
+	list(TRANSFORM INCLUDE_DIRS APPEND "\"")
+	list(JOIN INCLUDE_DIRS ",\n" BGAME_GLSL_CONFIG_INCLUDES)
+	set(BGAME_GLSL_CONFIG_PREAMBLE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include/glsl/preamble.glsl")
+
+	configure_file("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/cmake/glsl.json.in" "${OUT_DIR}/config.json" @ONLY)
+endfunction ()
+# Deferred to the end of the configure, once every shader has been declared.
+cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL bgame_write_glsl_config)
 
 if (LINUX OR EMSCRIPTEN)
 	if (RELOADABLE)
