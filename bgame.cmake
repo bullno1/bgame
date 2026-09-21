@@ -136,6 +136,41 @@ endfunction ()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 
+# CF's builtin shader includes (smooth_uv.shd and friends) only exist inside bgame-shaderc.
+# Editor tooling resolves #include on disk, so every build keeps a copy: add the directory to
+# the include path of a language server or of glslangValidator.
+#
+# Empty means .build/cf-builtins under the project root, next to the build directories the
+# cmd scripts create: one path for the editor whatever the platform or build type. Every
+# configuration dumps the same files there, and the tool only rewrites one whose content
+# changed.
+set(BGAME_SHADER_BUILTINS_DIR "" CACHE PATH
+	"Where CF's builtin shader includes are dumped for editor tooling. Empty: .build/cf-builtins under the project root")
+if (BGAME_SHADER_BUILTINS_DIR)
+	set(BGAME_SHADER_BUILTINS_OUT "${BGAME_SHADER_BUILTINS_DIR}")
+else ()
+	# Spelled with CMAKE_SOURCE_DIR: prelude.cmake points CMAKE_BINARY_DIR at the source tree.
+	set(BGAME_SHADER_BUILTINS_OUT "${CMAKE_SOURCE_DIR}/.build/cf-builtins")
+endif ()
+
+# The stamp is the output rather than the files: their mtime only moves when CF changes them,
+# so a Makefile generator would find them older than a rebuilt tool on every build. It stays
+# in this configuration's build directory while the files are shared, or one configuration's
+# dump would mark it done for all the others. The tool is the only dependency since the
+# builtins are compiled into it.
+set(BGAME_SHADER_BUILTINS_STAMP "${CMAKE_CURRENT_BINARY_DIR}/cf-builtins.stamp")
+add_custom_command(
+	OUTPUT "${BGAME_SHADER_BUILTINS_STAMP}"
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${BGAME_SHADER_BUILTINS_OUT}"
+	COMMAND bgame-shaderc --dump-builtins "${BGAME_SHADER_BUILTINS_OUT}"
+	COMMAND ${CMAKE_COMMAND} -E touch "${BGAME_SHADER_BUILTINS_STAMP}"
+	DEPENDS bgame-shaderc
+	COMMENT "Dumping CF's builtin shader includes to ${BGAME_SHADER_BUILTINS_OUT}"
+)
+add_custom_target(bgame-shader-builtins ALL
+	DEPENDS "${BGAME_SHADER_BUILTINS_STAMP}"
+)
+
 if (LINUX OR EMSCRIPTEN)
 	if (RELOADABLE)
 		set(PHYSFS_TARGET physfs)

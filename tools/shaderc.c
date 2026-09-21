@@ -8,11 +8,18 @@
 // * -D<name>[=<value>] defines a preprocessor macro.
 // * --depfile writes a Makefile-style depfile listing every file the compile read,
 //   however deep the #include that pulled it in.
+// * --dump-builtins writes CF's builtin includes to a directory, for tools that have to find
+//   them on disk (a language server, glslangValidator).
 //
 // The compiler itself (cute_shader.cpp, cute_spirv.h) is still built from the CF tree, and
 // CF's builtin shaders reach this file through shaderc_builtins.cpp.
 //
 // See: https://randygaul.github.io/cute_framework/topics/shader_compilation
+
+// mkdir under a strict -std.
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#	define _DEFAULT_SOURCE 1
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -21,6 +28,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <errno.h>
+#ifdef _WIN32
+#	include <direct.h>
+#else
+#	include <sys/stat.h>
+#endif
 #include <cute_alloc.h>
 #include "cute_shader.h"
 #include "shaderc_builtins.h"
@@ -509,6 +521,68 @@ static bool write_depfile(const char* path, const char* target, const char* inpu
 }
 
 //--------------------------------------------------------------------------------------------------
+// --dump-builtins. The builtin includes only exist inside this tool, so anything else that
+// wants to resolve `#include "smooth_uv.shd"` needs them as files.
+
+static bool make_dir(const char* path)
+{
+	errno = 0;
+#ifdef _WIN32
+	int result = _mkdir(path);
+#else
+	int result = mkdir(path, 0777);
+#endif
+	return result == 0 || errno == EEXIST;
+}
+
+// Leaves a file with the right content alone, so its mtime only moves when CF changes it
+// and an editor watching the directory is not woken by every build.
+static bool write_file_if_changed(barena_t* arena, const char* path, const char* content)
+{
+	size_t size = strlen(content);
+
+	barena_snapshot_t snapshot = barena_snapshot(arena);
+	size_t old_size = 0;
+	char* old_content = read_file(arena, path, &old_size);
+	bool unchanged = old_content != NULL && old_size == size && memcmp(old_content, content, size) == 0;
+	barena_restore(arena, snapshot);
+	if (unchanged) { return true; }
+
+	errno = 0;
+	FILE* file = fopen(path, "wb");
+	if (file == NULL) { return false; }
+
+	bool ok = fwrite(content, 1, size, file) == size;
+	return fclose(file) == 0 && ok;
+}
+
+static bool dump_builtins(barena_t* arena, const char* dir)
+{
+	if (!make_dir(dir)) {
+		perror(dir);
+		return false;
+	}
+
+	size_t dir_len = strlen(dir);
+	for (int i = 0; i < shaderc_num_builtin_includes; ++i) {
+		const CF_ShaderCompilerFile* builtin = &shaderc_builtin_includes[i];
+
+		size_t name_len = strlen(builtin->name);
+		char* path = barena_memalign(arena, dir_len + 1 + name_len + 1, _Alignof(char));
+		memcpy(path, dir, dir_len);
+		path[dir_len] = '/';
+		memcpy(path + dir_len + 1, builtin->name, name_len + 1);
+
+		if (!write_file_if_changed(arena, path, builtin->content)) {
+			perror(path);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+//--------------------------------------------------------------------------------------------------
 // Option parsers.
 
 typedef struct
@@ -565,6 +639,7 @@ int main(int argc, const char* argv[])
 	const char* output_header_path = NULL;
 	const char* output_bytecode_path = NULL;
 	const char* output_depfile_path = NULL;
+	const char* dump_builtins_dir = NULL;
 	const char* var_name = NULL;
 	bool nogles = false;
 	bool verbose = false;
@@ -646,6 +721,16 @@ int main(int argc, const char* argv[])
 			.parser = barg_str(&output_depfile_path),
 		},
 		{
+			.name = "dump-builtins",
+			.summary = "Write CF's builtin includes to a directory and exit",
+			.description =
+				"For tools that resolve #include on disk: add the directory to their search path.\n"
+				"The directory is created if needed, its parents are not. Files that already have\n"
+				"the right content are left alone. Takes no input.",
+			.value_name = "dir",
+			.parser = barg_str(&dump_builtins_dir),
+		},
+		{
 			.name = "no-gles",
 			.summary = "Skip the GLSL ES 300 output",
 			.boolean = true,
@@ -665,7 +750,7 @@ int main(int argc, const char* argv[])
 		.num_opts = sizeof(opts) / sizeof(opts[0]),
 		.opts = opts,
 		.allow_positional = true,
-		.usage = "bgame-shaderc [options] [--] <input>",
+		.usage = "bgame-shaderc [options] [--] <input>\n       bgame-shaderc --dump-builtins <dir>",
 		.summary = "Compile GLSL into SPIRV bytecode and generate a C header for embedding.",
 	};
 
@@ -673,6 +758,15 @@ int main(int argc, const char* argv[])
 	if (parse_result.status != BARG_OK) {
 		barg_print_result(&barg, parse_result, stderr);
 		return_code = parse_result.status == BARG_SHOW_HELP ? 0 : 1;
+		goto end;
+	}
+
+	if (dump_builtins_dir != NULL) {
+		if (parse_result.arg_index < argc) {
+			fprintf(stderr, "--dump-builtins takes no input\n");
+			goto end;
+		}
+		if (dump_builtins(&arena, dump_builtins_dir)) { return_code = 0; }
 		goto end;
 	}
 

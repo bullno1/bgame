@@ -19,3 +19,24 @@
 #elif BGAME_SHADER_STAGE == BGAME_SHADER_STAGE_FRAGMENT
 #define Varying(X) layout (location = X) in
 #endif
+
+// CF_SAMPLER_SET, CF_UNIFORM_SET: the descriptor sets a stage declares its samplers and its
+// uniform block in. SDL_GPU fixes them per stage, so a declaration shared between stages
+// cannot spell the number:
+//
+//   layout (set = CF_SAMPLER_SET, binding = 0) uniform sampler2D u_image;
+//   layout (set = CF_UNIFORM_SET, binding = 0) uniform uniform_block { ... };
+//
+// Storage textures and storage buffers live in the sampler set too, after the samplers; a
+// compute shader's read-write ones are apart, in set 1. A draw shader is a fragment shader,
+// where uniform binding 0 belongs to CF's built-ins: use binding 1.
+#if BGAME_SHADER_STAGE == BGAME_SHADER_STAGE_VERTEX
+#define CF_SAMPLER_SET 0
+#define CF_UNIFORM_SET 1
+#elif BGAME_SHADER_STAGE == BGAME_SHADER_STAGE_COMPUTE
+#define CF_SAMPLER_SET 0
+#define CF_UNIFORM_SET 2
+#else
+#define CF_SAMPLER_SET 2
+#define CF_UNIFORM_SET 3
+#endif
