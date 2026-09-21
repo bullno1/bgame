@@ -67,28 +67,47 @@ function (add_bgame_app NAME SOURCES)
 	endif ()
 endfunction ()
 
-# compile_<type>_shader(INPUT VAR_NAME OUTPUT [INCLUDE_DIRS <dir>...] [DEPENDS <file>...])
+# compile_<type>_shader(INPUT VAR_NAME OUTPUT [INCLUDE_DIRS <dir>...] [DEFINES <name>[=<value>]...] [DEPENDS <file>...])
 #
-# INCLUDE_DIRS: search path for `#include "file"`, on top of CF's builtin includes.
-# DEPENDS: the included files. cute-shaderc writes no depfile, so list them by hand or an
-# edit to one does not rebuild the shader.
+# Compiles with bgame-shaderc (tools/shaderc.c) into a C header.
+#
+# BGAME_SHADER_STAGE is always defined, to one of the BGAME_SHADER_STAGE_* names that
+# include/glsl/bgame.glsl gives a value, and that directory is always on the search path:
+# `#include "bgame.glsl"` to get them along with Varying().
+#
+# INCLUDE_DIRS: search path for `#include "file"`, ahead of bgame's and CF's builtin includes.
+# DEFINES: more preprocessor macros.
+# DEPENDS: only for an include that is itself generated. Everything a shader includes,
+# transitively, is tracked through the depfile the compiler writes.
 function (bgame_compile_shader TYPE INPUT VAR_NAME OUTPUT)
-	cmake_parse_arguments(PARSE_ARGV 4 ARG "" "" "INCLUDE_DIRS;DEPENDS")
+	cmake_parse_arguments(PARSE_ARGV 4 ARG "" "" "INCLUDE_DIRS;DEFINES;DEPENDS")
 
 	set(INCLUDE_FLAGS "")
 	foreach (DIR IN LISTS ARG_INCLUDE_DIRS)
 		list(APPEND INCLUDE_FLAGS "-I${DIR}")
 	endforeach ()
+	list(APPEND INCLUDE_FLAGS "-I${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include/glsl")
+
+	string(TOUPPER "${TYPE}" STAGE)
+	set(DEFINE_FLAGS "-DBGAME_SHADER_STAGE=BGAME_SHADER_STAGE_${STAGE}")
+	foreach (DEFINE IN LISTS ARG_DEFINES)
+		list(APPEND DEFINE_FLAGS "-D${DEFINE}")
+	endforeach ()
+
+	set(DEPFILE "${CMAKE_CURRENT_BINARY_DIR}/${VAR_NAME}.d")
 
 	add_custom_command(
 		OUTPUT ${OUTPUT}
-		COMMAND cute-shaderc
-			-type=${TYPE}
-			-varname=${VAR_NAME}
-			-oheader=${OUTPUT}
+		COMMAND bgame-shaderc
+			--type=${TYPE}
+			--varname=${VAR_NAME}
+			--header=${OUTPUT}
+			--depfile=${DEPFILE}
 			${INCLUDE_FLAGS}
+			${DEFINE_FLAGS}
 			${INPUT}
-		DEPENDS ${INPUT} ${ARG_DEPENDS} cute-shaderc
+		DEPENDS ${INPUT} ${ARG_DEPENDS} bgame-shaderc
+		DEPFILE ${DEPFILE}
 	)
 endfunction ()
 
@@ -103,15 +122,6 @@ endfunction ()
 function (compile_fragment_shader INPUT VAR_NAME OUTPUT)
 	bgame_compile_shader(fragment ${INPUT} ${VAR_NAME} ${OUTPUT} ${ARGN})
 endfunction ()
-
-if (NOT TARGET cute-shaderc)
-	message(FATAL_ERROR "bgame needs the cute-shaderc target from cute_framework: add_subdirectory(cute_framework) and keep CF_CUTE_SHADERC on")
-endif ()
-# It is a build tool, not part of the app, so keep it out of the shared
-# runtime output directory that prelude.cmake points at bin/.
-set_target_properties(cute-shaderc PROPERTIES
-	RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tools"
-)
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR})
 

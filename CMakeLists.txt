@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 project(bgame)
 
+# First: the shaders below are compiled with it.
+add_subdirectory(tools)
+
 set(SOURCES
 	"src/libs.c"
 	"src/log.c"

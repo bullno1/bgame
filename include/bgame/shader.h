@@ -11,7 +11,7 @@
 #endif
 
 // Shader is special in the sense that it's both code and data.
-// It's (re)compiled with cute-shaderc and trigger a hot code reload.
+// It's (re)compiled with bgame-shaderc and trigger a hot code reload.
 // But to reupload it to the GPU only on change requires a bit of special handling
 void
 bgame_load_draw_shader(CF_Shader* shader, CF_DrawShaderBytecode bytecode);
