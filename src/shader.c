@@ -3,8 +3,8 @@
 #include <bgame/allocator.h>
 #include <bhash.h>
 #include <blog.h>
-#include "chibihash64.h"
-#include "chibihash64-stream.h"
+#include <bgame/chibihash64.h>
+#include <bgame/chibihash64-stream.h>
 
 #if BGAME_RELOADABLE
 
