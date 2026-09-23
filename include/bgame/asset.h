@@ -29,8 +29,11 @@
 	AUTOLIST_ADD_ENTRY(bgame__asset_list, NAME, NAME##_def) \
 	bgame_asset_meta_t NAME##_meta = { __VA_ARGS__ }
 
+// The meta initializer is still parsed, unevaluated inside a sizeof: a mistake in it shows in
+// every unit, and an editor sees ordinary code instead of text a macro discards
 #define BGAME_DECLARE_ASSET(NAME, TYPE, DATA_TYPE, ...) \
-	extern DATA_TYPE NAME
+	extern DATA_TYPE NAME; \
+	static_assert(sizeof((bgame_asset_meta_t){ __VA_ARGS__ }) > 0, "")
 
 #ifndef BGAME_DEFINE_ASSETS
 #	define BGAME_ASSET BGAME_DECLARE_ASSET
