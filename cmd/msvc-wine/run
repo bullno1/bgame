@@ -4,5 +4,22 @@ CMD_DIR=$(dirname "$0")
 RELOADABLE=OFF
 . "${CMD_DIR}/../common.sh"
 
+OUT=".build/msvc-wine/${BUILD_TYPE}"
+BIN="bin/win/${BUILD_DIR}"
+
+# Wine's builtin d3dcompiler_47 lacks parts of HLSL that Microsoft's has, use
+# the SDK's redistributable one instead
+if [ ! -f "${BIN}/d3dcompiler_47.dll" ]
+then
+	cache_var() {
+		sed -n "s/^$1:[A-Z]*=//p" "${OUT}/CMakeCache.txt"
+	}
+	PREFIX=$(cache_var MSVC_WINE_PREFIX)
+	ARCH=$(cache_var MSVC_WINE_ARCH)
+	"${OUT}/msvc-wine-shims/run-in-container" cp \
+		"${PREFIX}/Windows Kits/10/Redist/D3D/${ARCH}/d3dcompiler_47.dll" "${BIN}/"
+fi
+
 # Host wine: the container has no display or GPU
-exec wine "bin/msvc-wine/${BUILD_DIR}/${APP}.exe" "$@"
+WINEDLLOVERRIDES="d3dcompiler_47=n,b${WINEDLLOVERRIDES:+;${WINEDLLOVERRIDES}}" \
+	exec wine "${BIN}/${APP}.exe" "$@"

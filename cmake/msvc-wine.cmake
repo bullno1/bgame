@@ -62,6 +62,13 @@
 #                           into instead of a managed one; start it with
 #                             podman run -d --name <name> -v "$HOME:$HOME" \
 #                                 msvc-wine msvc-wine-daemon
+#   MSVC_WINE_PREFIX        Where the toolchain lives inside the container
+#                           (default: /opt/msvc). cl reports the headers it
+#                           includes by their container paths, which a build
+#                           tool on the host cannot stat, so the shim drops
+#                           the ones below this prefix from the dependency
+#                           output. They only change with the image, so a
+#                           new image needs a fresh build tree.
 #
 # With MSVC_WINE_DAEMON=OFF, debug info defaults to the embedded (/Z7)
 # format: separate PDB files (/Zi) need mspdbsrv.exe to stay alive between
@@ -69,8 +76,6 @@
 # container. Set CMAKE_MSVC_DEBUG_INFORMATION_FORMAT to override. For this
 # to also apply to CMake's own compiler probing, the project needs
 # cmake_minimum_required(VERSION 3.25) or cmake_policy(SET CMP0141 NEW).
-
-include("${CMAKE_CURRENT_LIST_DIR}/msvc.cmake")
 
 if(CMAKE_VERSION VERSION_LESS 3.25)
     message(FATAL_ERROR "toolchain.cmake requires CMake 3.25 or newer")
@@ -84,6 +89,7 @@ set(MSVC_WINE_RUN_ARGS "" CACHE STRING "Extra arguments to the container runtime
 set(MSVC_WINE_DAEMON ON CACHE BOOL "Keep a long lived container instead of starting one per tool invocation")
 set(MSVC_WINE_IDLE_TIMEOUT 1800 CACHE STRING "Seconds of inactivity after which the managed container exits (0 = never)")
 set(MSVC_WINE_CONTAINER "" CACHE STRING "Name of an externally managed running container to exec into")
+set(MSVC_WINE_PREFIX "/opt/msvc" CACHE STRING "Toolchain install prefix inside the container")
 
 set(CMAKE_SYSTEM_NAME Windows)
 if(MSVC_WINE_ARCH STREQUAL "x86")
@@ -159,10 +165,34 @@ arch="@MSVC_WINE_ARCH@"
 container="@_msvc_wine_container@"
 managed=@_msvc_wine_managed@
 idle_timeout="@MSVC_WINE_IDLE_TIMEOUT@"
+prefix="@MSVC_WINE_PREFIX@"
 tool=$1
 shift
 
+in_container() {
+    if [ -z "$container" ]; then
+        "$runtime" run --rm -i -w "$PWD" -e MSVC_ARCH="$arch" \
+            @_msvc_wine_mount_args@ @MSVC_WINE_RUN_ARGS@ "$image" "$tool" "$@"
+    else
+        "$runtime" exec -i -w "$PWD" -e MSVC_ARCH="$arch" "$container" "$tool" "$@"
+    fi
+}
+
+# The toolchain headers are only visible inside the container, so a build tool
+# that stats what /showIncludes reports would consider every object out of
+# date. Keep the compiler's status, which the pipe would otherwise swallow.
+filter_deps() {
+    exec 4>&1
+    status=$({ { in_container "$@"; echo $? >&3; } |
+        sed "\%^Note: including file:[[:blank:]]*${prefix}/%d" >&4; } 3>&1)
+    return "$status"
+}
+
 if [ -z "$container" ]; then
+    if [ "$tool" = cl ]; then
+        filter_deps "$@"
+        exit $?
+    fi
     exec "$runtime" run --rm -i -w "$PWD" -e MSVC_ARCH="$arch" \
         @_msvc_wine_mount_args@ @MSVC_WINE_RUN_ARGS@ "$image" "$tool" "$@"
 fi
@@ -202,6 +232,11 @@ if [ "$managed" = 1 ] && ! running; then
     else
         start || exit 1
     fi
+fi
+
+if [ "$tool" = cl ]; then
+    filter_deps "$@"
+    exit $?
 fi
 
 exec "$runtime" exec -i -w "$PWD" -e MSVC_ARCH="$arch" "$container" "$tool" "$@"

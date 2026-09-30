@@ -5,4 +5,4 @@ RELOADABLE=OFF
 . "${CMD_DIR}/../common.sh"
 require_tests
 
-".build/msvc-wine/${BUILD_TYPE}/msvc-wine-shims/wine-run" "bin/msvc-wine/${BUILD_DIR}/${TESTS}.exe" "$@"
+".build/msvc-wine/${BUILD_TYPE}/msvc-wine-shims/wine-run" "bin/win/${BUILD_DIR}/${TESTS}.exe" "$@"
