@@ -1,0 +1,24 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+RELOADABLE=OFF
+. "${CMD_DIR}/../common.sh"
+
+OUT=".build/msvc-wine/${BUILD_TYPE}"
+
+if [ ! -f "${OUT}/build.ninja" ]
+then
+	cmake \
+		-G "Ninja" \
+		-S . \
+		-B "${OUT}" \
+		-DCMAKE_TOOLCHAIN_FILE="${BGAME_DIR}/cmake/msvc-wine.cmake" \
+		-DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+		-DRELOADABLE=OFF \
+		-DPLATFORM_NAME="msvc-wine" \
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+fi
+
+cmake --build "${OUT}"

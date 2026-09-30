@@ -302,10 +302,10 @@ bgame_handle_ui_render_command(const Clay_RenderCommand* command) {
 		} break;
 		case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
 			cf_draw_push_scissor((CF_Rect){
-				.x = command->boundingBox.x,
-				.y = command->boundingBox.y,
-				.w = command->boundingBox.width,
-				.h = command->boundingBox.height,
+				.x = (int)command->boundingBox.x,
+				.y = (int)command->boundingBox.y,
+				.w = (int)command->boundingBox.width,
+				.h = (int)command->boundingBox.height,
 			});
 		} break;
 		case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END: {

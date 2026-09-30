@@ -189,7 +189,7 @@ bgame_static(bgame_app_t* app, int argc, const char** argv) {
 	return SDL_APP_CONTINUE;
 }
 
-SDLCALL SDL_AppResult
+SDL_AppResult SDLCALL
 SDL_AppIterate(bgame_app_t* app) {
 	if (!cf_app_is_running()) { return SDL_APP_SUCCESS; }
 
@@ -199,7 +199,7 @@ SDL_AppIterate(bgame_app_t* app) {
 	return cf_app_is_running() ? SDL_APP_CONTINUE : SDL_APP_SUCCESS;
 }
 
-SDLCALL void
+void SDLCALL
 SDL_AppQuit(bgame_app_t* app, SDL_AppResult result) {
 	(void)result;
 	app->cleanup();

@@ -9,6 +9,7 @@ if (MSVC)
 	add_compile_options(/wd4324) # _Alignof is intentional
 	add_compile_options(/wd4100) # Unreferenced parameter
 	add_compile_options(/wd4459) # Hiding global definition
+	add_compile_options(/wd4116) # Unnamed struct in a for-init (BHASH_FOREACH)
 	add_compile_options(/experimental:c11atomics)  # Atomics
 	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 else()

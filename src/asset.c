@@ -107,7 +107,7 @@ bgame_asset_strcpy(const char* str, bgame_allocator_t* allocator) {
 	memcpy(chars, str, len);
 	chars[len] = '\0';
 	return (bgame_str_t){
-		.len = len,
+		.len = (int)len,
 		.chars = chars,
 	};
 }
@@ -121,7 +121,7 @@ static inline bgame_str_t
 bgame_asset_strref(const char* str) {
 	size_t len = strlen(str);
 	return (bgame_str_t){
-		.len = len,
+		.len = (int)len,
 		.chars = str,
 	};
 }
