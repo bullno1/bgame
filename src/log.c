@@ -8,7 +8,7 @@ static blog_file_logger_options_t bgame_log_options = {
 	.with_colors = true,
 };
 
-static void
+void
 bgame_log_init(void) {
 	blog_init(&(blog_options_t){
 		.current_filename = bgame_entry_file,
@@ -22,12 +22,4 @@ bgame_log_init(void) {
 #endif
 	bgame_log_options.file = stdout;
 	blog_add_file_logger(level, &bgame_log_options);
-}
-
-BGAME_ON_LOAD(bgame_log) {
-	bgame_log_init();
-}
-
-BGAME_AFTER_RELOAD(bgame_log) {
-	bgame_log_init();
 }

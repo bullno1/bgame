@@ -33,7 +33,7 @@ bgame_frame_allocator_init(void);
 extern void
 bgame_cute_framework_allocator_init(void);
 
-static void
+void
 bgame_allocator_init(void) {
 	// Default allocator must be initialized first
 	if (bgame_default_allocator == NULL) {
@@ -44,12 +44,4 @@ bgame_allocator_init(void) {
 	bgame_cute_framework_allocator_init();
 	bgame_tracked_allocator_init();
 	bgame_frame_allocator_init();
-}
-
-BGAME_ON_LOAD(bgame_allocator) {
-	bgame_allocator_init();
-}
-
-BGAME_AFTER_RELOAD(bgame_allocator) {
-	bgame_allocator_init();
 }

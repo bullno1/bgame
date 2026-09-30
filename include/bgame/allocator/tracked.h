@@ -1,4 +1,5 @@
 #ifndef BGAME_TRACKED_ALLOCATOR_H
+#define BGAME_TRACKED_ALLOCATOR_H
 
 #include <bgame/reloadable.h>
 #include <bmacro.h>

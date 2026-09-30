@@ -16,6 +16,12 @@ typedef void (*bgame_lifecycle_fn_t)(void);
 	static void NAME##_##EVENT(void)
 
 void
+bgame_allocator_init(void);
+
+void
+bgame_log_init(void);
+
+void
 bgame_on_load(void);
 
 void
