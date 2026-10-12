@@ -207,21 +207,6 @@ endfunction ()
 # Deferred to the end of the configure, once every shader has been declared.
 cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL bgame_write_glsl_config)
 
-if (LINUX OR EMSCRIPTEN)
-	if (RELOADABLE)
-		set(PHYSFS_TARGET physfs)
-	else ()
-		set(PHYSFS_TARGET physfs-static)
-	endif ()
-
-	set_target_properties("${PHYSFS_TARGET}" PROPERTIES
-		C_STANDARD 99
-		C_STANDARD_REQUIRED ON
-		C_EXTENSIONS OFF
-	)
-	target_compile_definitions("${PHYSFS_TARGET}" PRIVATE _POSIX_C_SOURCE=200112L)
-endif ()
-
 if (EMSCRIPTEN)
 	target_compile_definitions("${PHYSFS_TARGET}" PRIVATE PHYSFS_PLATFORM_LINUX=1)
 
