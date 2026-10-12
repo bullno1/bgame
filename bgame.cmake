@@ -208,8 +208,6 @@ endfunction ()
 cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL bgame_write_glsl_config)
 
 if (EMSCRIPTEN)
-	target_compile_definitions("${PHYSFS_TARGET}" PRIVATE PHYSFS_PLATFORM_LINUX=1)
-
 	add_custom_target(copy-emscripten-shell
 		COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_LIST_DIR}/emscripten ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/emscripten
 	)
