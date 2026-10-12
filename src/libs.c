@@ -14,6 +14,7 @@
 #include <bhandle.h>
 #include <barena.h>
 #include <bsfn.h>
+#include <bco.h>
 
 #undef BHANDLE_REALLOC
 
