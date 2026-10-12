@@ -35,3 +35,6 @@ elseif (BGAME_SYSTEM_SDL STREQUAL "AUTO")
 else ()
 	set(CF_USE_SYSTEM_SDL ${BGAME_SYSTEM_SDL})
 endif ()
+
+# s2n prefers a static libcrypto, whose own dependencies (zlib, zstd) it never links
+set(S2N_USE_CRYPTO_SHARED_LIBS ON CACHE BOOL "" FORCE)
