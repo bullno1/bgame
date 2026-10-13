@@ -7,11 +7,13 @@
 #include <barena.h>
 
 #ifdef _MSC_VER
-#define BGAME_MAX_ALIGN_TYPE double
+#define BGAME_MAX_ALIGN_TYPE long double
 #else
 #include <stddef.h>
 #define BGAME_MAX_ALIGN_TYPE max_align_t
 #endif
+
+typedef BGAME_MAX_ALIGN_TYPE bgame_max_align_t;
 
 typedef struct bgame_allocator_s {
 	void* (*realloc)(void* ptr, size_t size, struct bgame_allocator_s* ctx);
