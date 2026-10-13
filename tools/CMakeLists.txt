@@ -28,6 +28,7 @@ target_include_directories(bgame-shaderc SYSTEM PRIVATE
 	"${CF_DIR}/libraries"
 )
 target_link_libraries(bgame-shaderc PRIVATE blibs)
+target_compile_definitions(bgame-shaderc PRIVATE CF_STATIC)
 set_target_properties(bgame-shaderc PROPERTIES
 	CXX_STANDARD 20
 	CXX_STANDARD_REQUIRED ON
