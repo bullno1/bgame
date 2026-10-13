@@ -1,0 +1,94 @@
+#!/bin/sh -e
+
+# Extracts translatable text into ${POT} and merges it into every
+# ${LOCALE_DIR}/*.po. Needs a build: the compile database and the generated
+# headers come from it. Each unit under EXTRACT_DIRS is preprocessed with
+# BFMT_EXTRACT, which turns the bfmt translation macros into gettext calls
+# that xgettext picks up with the original locations. Locations are kept per
+# file, not per line, so the catalog only changes when the text does.
+# Prints nothing but the path of the catalog, so it can be passed on.
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/../common.sh"
+
+OUT=".build/linux/${BUILD_DIR}"
+if [ ! -f "${OUT}/compile_commands.json" ]
+then
+	echo "${OUT}/compile_commands.json not found: build first" >&2
+	exit 1
+fi
+
+mkdir -p "$(dirname "${POT}")"
+
+ROOT="${ROOT}" OUT="${OUT}" EXTRACT_DIRS="${EXTRACT_DIRS}" python3 - <<'PY'
+import json, os, shlex, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
+
+root = os.environ["ROOT"]
+out = os.path.join(root, os.environ["OUT"], "extract")
+dirs = [os.path.join(root, d) + os.sep for d in os.environ["EXTRACT_DIRS"].split()]
+
+def plan(entry):
+	path = entry["file"]
+	if not any(path.startswith(d) for d in dirs):
+		return None
+	rel = os.path.relpath(path, root)
+	args = shlex.split(entry["command"])
+	cmd = [args[0]]
+	skip = False
+	for arg in args[1:]:
+		if skip:
+			skip = False
+		elif arg in ("-o", "-MF", "-MT", "-MQ"):
+			skip = True
+		elif arg in ("-c", "-MD", "-MMD") or arg == path:
+			pass
+		else:
+			cmd.append(arg)
+	target = os.path.join(out, rel + ".i")
+	os.makedirs(os.path.dirname(target), exist_ok=True)
+	# The unit is named relative to the root so that the locations are too
+	return cmd + ["-E", "-C", "-DBFMT_EXTRACT", rel, "-o", target], target
+
+def run(job):
+	cmd, target = job
+	result = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+	if result.returncode != 0:
+		sys.stderr.write(result.stderr)
+		raise SystemExit(f"Could not preprocess {cmd[-3]}")
+	return target
+
+with open(os.path.join(root, os.environ["OUT"], "compile_commands.json")) as f:
+	jobs = [job for job in map(plan, json.load(f)) if job is not None]
+with ThreadPoolExecutor() as pool:
+	units = list(pool.map(run, jobs))
+with open(os.path.join(out, "units.txt"), "w") as f:
+	f.write("\n".join(units) + "\n")
+PY
+
+# The keys are ICU templates, not printf formats, hence no-c-format
+xgettext \
+	--language=C \
+	--files-from="${OUT}/extract/units.txt" \
+	--from-code=UTF-8 \
+	--add-comments=TRANSLATORS: \
+	--flag=gettext:1:no-c-format \
+	--flag=pgettext:2:no-c-format \
+	--package-name="${APP}" \
+	--sort-by-file \
+	--add-location=file \
+	--no-wrap \
+	--force-po \
+	-o "${POT}"
+
+# Relative locations for text in headers, and no churn from the date
+sed -i -e "s|${ROOT}/||g" -e '/^"POT-Creation-Date:/d' "${POT}"
+
+
+for PO in "${LOCALE_DIR}"/*.po
+do
+	[ -f "${PO}" ] || continue
+	msgmerge --quiet --update --previous --backup=none --sort-by-file --add-location=file --no-wrap "${PO}" "${POT}"
+done
+
+echo "${POT}"
