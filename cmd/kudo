@@ -110,7 +110,6 @@ class Entry:
     dest: str  # relative to project root, e.g. "assets/sprites/block.png"
     source_hash: str
     modified: bool = False
-    dest_hash: str = ""
     note: str = ""
     added: str = ""
 
@@ -122,8 +121,6 @@ class Entry:
         d = asdict(self)
         if not d["note"]:
             d.pop("note")
-        if not d["dest_hash"]:
-            d.pop("dest_hash")
         return json.dumps(d, ensure_ascii=False)
 
 
@@ -413,13 +410,6 @@ def run_checks(cfg: Config, entries: list[Entry], deep: bool = False
             continue
 
         if e.modified:
-            if not e.dest_hash:
-                issues.append(Issue("warn", "unblessed", e.dest,
-                                    "modified entry has no recorded hash; run 'kudo bless'"))
-            elif hash_file(dst) != e.dest_hash:
-                issues.append(Issue("error", "derived-drift", e.dest,
-                                    "modified asset changed since it was last blessed",
-                                    fix="" ))
             if not e.note:
                 issues.append(Issue("warn", "no-note", e.dest,
                                     "modified asset has no note; CC BY requires "
@@ -757,7 +747,6 @@ def cmd_add(args) -> int:
                 f"{dest} does not exist. For a modified asset, put your version "
                 "in place first; kudo records it, it does not create it."
             )
-        entry.dest_hash = hash_file(target)
     else:
         materialize(cfg, entry)
 
@@ -888,10 +877,8 @@ def cmd_bless(args) -> int:
     entry = _find(entries, args.dest, cfg)
     if not entry.modified:
         raise KudoError(f"{entry.dest} is not marked modified; use 'kudo edit' first")
-    target = cfg.root / entry.dest
-    if not target.is_file():
-        raise KudoError(f"{entry.dest} does not exist")
-    entry.dest_hash = hash_file(target)
+    if not args.upstream and not args.note:
+        raise KudoError("nothing to bless; pass --upstream and/or --note")
     if args.upstream:
         src = cfg.vendor_dir / entry.source
         if not src.is_file():
@@ -925,7 +912,6 @@ def cmd_edit(args) -> int:
     entry.note = args.note or entry.note
     if target.exists():
         set_writable(target)
-        entry.dest_hash = hash_file(target)
     rewrite_manifest(cfg, entries)
     print(f"{entry.dest} is now writable and marked modified")
     if not entry.note:
@@ -1258,7 +1244,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("stats", help="per-pack usage report (always exits 0)")
     s.set_defaults(func=cmd_stats)
 
-    s = sub.add_parser("bless", help="accept the current state of a modified asset")
+    s = sub.add_parser("bless", help="set the note of a modified asset, or accept a new vendor basis for it")
     s.add_argument("dest")
     s.add_argument("--upstream", action="store_true",
                    help="also accept the current vendor file as its basis")
