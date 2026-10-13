@@ -7,6 +7,10 @@
 #include <blog.h>
 #include <cute.h>
 
+#define BFMT_IMPLEMENTATION
+#define BFMT_LOG_IMPLEMENTATION
+#include <bfmt_log.h>
+
 #define BLIB_REALLOC bgame_realloc
 #define BLIB_IMPLEMENTATION
 #include <bhash.h>

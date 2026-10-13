@@ -4,6 +4,7 @@
 #include <clay.h>
 #include <bgame/asset/font.h>
 #include <cute_color.h>
+#include <bfmt.h>
 
 #define BUI(...) CLAY(__VA_ARGS__)
 
@@ -36,6 +37,13 @@ typedef struct {
 
 void
 bgame_update_ui(void);
+
+/*! The locale UI text is translated with, NULL for the source text */
+void
+bgame_ui_set_locale(bfmt_locale_t* locale);
+
+bfmt_locale_t*
+bgame_ui_locale(void);
 
 void
 bgame_register_ui_font(uint16_t id, const char* name);

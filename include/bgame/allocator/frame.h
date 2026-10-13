@@ -6,6 +6,8 @@
 #include <stdarg.h>
 #include <bmacro.h>
 #include <stdio.h>
+#include <bfmt.h>
+#include <bgame/str.h>
 
 struct bgame_allocator_s;
 
@@ -19,6 +21,35 @@ bgame_begin_frame_alloc(void);
 
 void
 bgame_end_frame_alloc(void* marker);
+
+/**
+ * A stream collecting text into the frame arena.
+ *
+ * Pair with @ref bgame_end_str, which hands the text out as a @ref bgame_str_t.
+ * A nested pair would drop all characters and log an error instead.
+ */
+bfmt_stream_t*
+bgame_begin_str(void);
+
+/*! The text collected since @ref bgame_begin_str, NUL-terminated, in the frame arena */
+bgame_str_t
+bgame_end_str(void);
+
+/*! @ref bfmt_print into the frame arena, as a @ref bgame_str_t */
+#define bgame_print(...) \
+	(bfmt_print(bgame_begin_str(), __VA_ARGS__), bgame_end_str())
+
+/*! @ref bfmt_translate into the frame arena, as a @ref bgame_str_t */
+#define bgame_translate(LOCALE, ...) \
+	(bfmt_translate(bgame_begin_str(), LOCALE, __VA_ARGS__), bgame_end_str())
+
+/*! @ref bfmt_ptranslate into the frame arena, as a @ref bgame_str_t */
+#define bgame_ptranslate(LOCALE, CONTEXT, ...) \
+	(bfmt_ptranslate(bgame_begin_str(), LOCALE, CONTEXT, __VA_ARGS__), bgame_end_str())
+
+/*! @ref bfmt_translate_text into the frame arena, as a @ref bgame_str_t */
+#define bgame_translate_text(LOCALE, TEXT, ...) \
+	(bfmt_translate_text(bgame_begin_str(), LOCALE, TEXT __VA_OPT__(,) __VA_ARGS__), bgame_end_str())
 
 static inline void*
 bgame_make_frame_copy(void* data, size_t size, size_t alignment) {

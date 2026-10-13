@@ -27,6 +27,7 @@ BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
 BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
 BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
+BGAME_VAR(bfmt_locale_t*, bgame_ui_current_locale) = NULL;
 
 static void
 bgame_ui_error(Clay_ErrorData error) {
@@ -124,6 +125,16 @@ BGAME_AFTER_RELOAD(bgame_ui) {
 
 BGAME_ON_UNLOAD(bgame_ui) {
 	bgame_ui_cleanup();
+}
+
+void
+bgame_ui_set_locale(bfmt_locale_t* locale) {
+	bgame_ui_current_locale = locale;
+}
+
+bfmt_locale_t*
+bgame_ui_locale(void) {
+	return bgame_ui_current_locale;
 }
 
 void

@@ -34,9 +34,9 @@ bgame_ui_render_rich_text(
 
 	cf_push_text_id(command->id);
 	cf_draw_text(
-		rich_text->text,
+		rich_text->text.chars,
 		(CF_V2){ command->boundingBox.x, -command->boundingBox.y },
-		rich_text->text_len
+		rich_text->text.len
 	);
 	cf_pop_text_id();
 
@@ -77,7 +77,7 @@ bgame_ui_rich_text(
 
 		if (size_data.found) {
 			bgame_ui_push_text_config(&rich_text, size_data.boundingBox.width);
-			CF_V2 size = cf_text_size(rich_text.text, rich_text.text_len);
+			CF_V2 size = cf_text_size(rich_text.text.chars, rich_text.text.len);
 			bgame_ui_pop_text_config(&rich_text);
 
 			BUI(CLAY_ID_LOCAL("Content"), {
