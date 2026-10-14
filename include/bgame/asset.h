@@ -117,6 +117,10 @@ bgame_asset_realloc(bgame_asset_bundle_t* bundle, void* ptr, size_t size);
 void
 bgame_asset_free(bgame_asset_bundle_t* bundle, void* ptr);
 
+/*! The allocator of a bundle */
+bgame_allocator_t*
+bgame_asset_allocator(bgame_asset_bundle_t* bundle);
+
 void
 bgame_asset_check_bundle(bgame_asset_bundle_t* bundle);
 

@@ -3,6 +3,8 @@
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
 #include <bgame/allocator/frame.h>
+#include <bfmt_log.h>
+#include <bfmt_cldr.h>
 #include <bgame/shader.h>
 #include <blog.h>
 #include <bminmax.h>
@@ -27,7 +29,15 @@ BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
 BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
 BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
-BGAME_VAR(bfmt_locale_t*, bgame_ui_current_locale) = NULL;
+BGAME_VAR(bgame_translation_t*, bgame_ui_current_translation) = NULL;
+
+// Plain static on purpose: a reload zeroes it, so its callbacks are never stale
+static struct {
+	bool valid;
+	bgame_translation_t* translation;
+	int version;
+	bfmt_locale_t locale;
+} bgame_ui_locale_cache = { 0 };
 
 static void
 bgame_ui_error(Clay_ErrorData error) {
@@ -127,14 +137,56 @@ BGAME_ON_UNLOAD(bgame_ui) {
 	bgame_ui_cleanup();
 }
 
+static const char*
+bgame_ui_translate(void* userdata, const char* context, const char* key) {
+	return bgame_translation_lookup(userdata, context, key);
+}
+
+static void
+bgame_ui_report_error(void* userdata, const char* context, const char* key, const char* template, int offset) {
+	bgame_translation_t* translation = userdata;
+	if (translation != NULL && template != key) {
+		BFMT_WARN(
+			"Bad translation at offset ", offset, " in \"", template, "\" for \"", key, "\"",
+			context != NULL ? " in context " : "", context != NULL ? context : ""
+		);
+		bgame_translation_drop(translation, context, key);
+	} else {
+		BFMT_WARN("Bad template at offset ", offset, " in \"", template, "\"");
+	}
+}
+
 void
-bgame_ui_set_locale(bfmt_locale_t* locale) {
-	bgame_ui_current_locale = locale;
+bgame_ui_set_translation(bgame_translation_t* translation) {
+	bgame_ui_current_translation = translation;
+}
+
+bgame_translation_t*
+bgame_ui_translation(void) {
+	return bgame_ui_current_translation;
 }
 
 bfmt_locale_t*
 bgame_ui_locale(void) {
-	return bgame_ui_current_locale;
+	bgame_translation_t* translation = bgame_ui_current_translation;
+	int version = translation != NULL ? bgame_asset_version(translation) : 0;
+	if (
+		!bgame_ui_locale_cache.valid
+		|| bgame_ui_locale_cache.translation != translation
+		|| bgame_ui_locale_cache.version != version
+	) {
+		const char* language = translation != NULL ? bgame_translation_language(translation) : BGAME_UI_SOURCE_LANGUAGE;
+		bgame_ui_locale_cache.locale = (bfmt_locale_t){
+			.plural_rule = bfmt_cldr_plural_rule(language),
+			.translate = translation != NULL ? bgame_ui_translate : NULL,
+			.report_error = bgame_ui_report_error,
+			.userdata = translation,
+		};
+		bgame_ui_locale_cache.valid = true;
+		bgame_ui_locale_cache.translation = translation;
+		bgame_ui_locale_cache.version = version;
+	}
+	return &bgame_ui_locale_cache.locale;
 }
 
 void

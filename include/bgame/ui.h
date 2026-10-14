@@ -5,6 +5,12 @@
 #include <bgame/asset/font.h>
 #include <cute_color.h>
 #include <bfmt.h>
+#include <bgame/asset/translation.h>
+
+/*! The language the source text is written in, for its plural rules */
+#ifndef BGAME_UI_SOURCE_LANGUAGE
+#define BGAME_UI_SOURCE_LANGUAGE "en"
+#endif
 
 #define BUI(...) CLAY(__VA_ARGS__)
 
@@ -38,10 +44,19 @@ typedef struct {
 void
 bgame_update_ui(void);
 
-/*! The locale UI text is translated with, NULL for the source text */
+/**
+ * The language UI text is translated to, NULL for the source text.
+ *
+ * The translation is referenced, not copied: unload it only after setting
+ * another.
+ */
 void
-bgame_ui_set_locale(bfmt_locale_t* locale);
+bgame_ui_set_translation(bgame_translation_t* translation);
 
+bgame_translation_t*
+bgame_ui_translation(void);
+
+/*! The current locale */
 bfmt_locale_t*
 bgame_ui_locale(void);
 

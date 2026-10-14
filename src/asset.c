@@ -314,6 +314,11 @@ bgame_asset_free(bgame_asset_bundle_t* bundle, void* ptr) {
 	bgame_free(ptr, bundle->allocator);
 }
 
+bgame_allocator_t*
+bgame_asset_allocator(bgame_asset_bundle_t* bundle) {
+	return bundle->allocator;
+}
+
 void
 bgame_asset_check_bundle(bgame_asset_bundle_t* bundle) {
 #if BGAME_RELOADABLE

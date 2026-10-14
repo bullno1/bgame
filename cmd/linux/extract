@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 # Extracts translatable text into ${POT} and merges it into every
-# ${LOCALE_DIR}/*.po. Needs a build: the compile database and the generated
+# ${TRANSLATIONS_DIR}/*.po. Needs a build: the compile database and the generated
 # headers come from it. Each unit under EXTRACT_DIRS is preprocessed with
 # BFMT_EXTRACT, which turns the bfmt translation macros into gettext calls
 # that xgettext picks up with the original locations. Locations are kept per
@@ -85,7 +85,7 @@ xgettext \
 sed -i -e "s|${ROOT}/||g" -e '/^"POT-Creation-Date:/d' "${POT}"
 
 
-for PO in "${LOCALE_DIR}"/*.po
+for PO in "${TRANSLATIONS_DIR}"/*.po
 do
 	[ -f "${PO}" ] || continue
 	msgmerge --quiet --update --previous --backup=none --sort-by-file --add-location=file --no-wrap "${PO}" "${POT}"

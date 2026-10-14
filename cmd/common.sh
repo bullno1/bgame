@@ -5,7 +5,7 @@
 #   APP=my-game                    # executable name, required
 #   TESTS=my-game-tests            # test executable name, optional
 #   WATCH_DIRS="src assets deps"   # directories the watch scripts monitor
-#   LOCALE_DIR=assets/i18n         # the .po files, which extract merges the catalog into
+#   TRANSLATIONS_DIR=assets/i18n   # the .po files, which extract merges the catalog into
 #   POT=i18n/my-game.pot           # the catalog extract writes, for translators and tools
 #   EXTRACT_DIRS="src"             # directories whose units extract scans for translatable text
 #
@@ -21,7 +21,7 @@ fi
 : "${APP:?bgame.env must set APP}"
 TESTS=${TESTS:-}
 WATCH_DIRS=${WATCH_DIRS:-src deps}
-LOCALE_DIR=${LOCALE_DIR:-assets/i18n}
+TRANSLATIONS_DIR=${TRANSLATIONS_DIR:-assets/i18n}
 POT=${POT:-i18n/${APP}.pot}
 EXTRACT_DIRS=${EXTRACT_DIRS:-src}
 

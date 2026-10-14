@@ -9,7 +9,9 @@
 
 #define BFMT_IMPLEMENTATION
 #define BFMT_LOG_IMPLEMENTATION
+#define BFMT_CLDR_IMPLEMENTATION
 #include <bfmt_log.h>
+#include <bfmt_cldr.h>
 
 #define BLIB_REALLOC bgame_realloc
 #define BLIB_IMPLEMENTATION

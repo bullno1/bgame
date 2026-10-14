@@ -19,6 +19,7 @@ set(SOURCES
 	"src/asset/sprite.c"
 	"src/asset/audio.c"
 	"src/asset/binary.c"
+	"src/asset/translation.c"
 	"src/asset/font.c"
 	"src/asset/collision_shape.c"
 	"src/asset/image.c"
