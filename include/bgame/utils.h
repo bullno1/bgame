@@ -7,20 +7,9 @@
 #include <barena.h>
 #include <stdarg.h>
 #include <bmacro.h>
+#include <bgame/scope.h>
 
 static bent_t bgame__last_entity;
-
-#define BGAME_SCOPE(ENTER, EXIT) \
-	for ( \
-		int BGAME_UNIQUE_VAR(bgame__scope_) = (ENTER, 0); \
-		BGAME_UNIQUE_VAR(bgame__scope_) < 1; \
-		++BGAME_UNIQUE_VAR(bgame__scope_), EXIT \
-	)
-
-#define BGAME_UNIQUE_VAR(PREFIX) BGAME_CONCAT(PREFIX, __LINE__)
-
-#define BGAME_CONCAT(PREFIX, SUFFIX) BGAME__CONCAT2(PREFIX, SUFFIX)
-#define BGAME__CONCAT2(PREFIX, SUFFIX) PREFIX##SUFFIX
 
 #define BGAME_RUN_CORO_ON(condition, function, arg) \
 	do { \

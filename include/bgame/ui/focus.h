@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../utils.h"
+#include "../scope.h"
 
 /**
  * Keyboard and joypad focus for the UI.

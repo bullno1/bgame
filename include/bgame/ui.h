@@ -41,6 +41,10 @@ typedef struct {
 	bgame_ui_transition_curve_fn_t curve;
 	bgame_ui_transition_curve_fn_t enter_curve;
 	bgame_ui_transition_curve_fn_t exit_curve;
+	/*! Written back by the layout: idle unless the element is in a transition this frame */
+	Clay_TransitionState state;
+	/*! Written back by the layout: how far along the transition is, 0 to 1 */
+	float progress;
 } bgame_ui_transition_config_t;
 
 void
@@ -82,6 +86,10 @@ bgame_end_render_ui(void);
 
 void*
 bgame_ui_text_config(bgame_ui_text_config_t config);
+
+/*! A config for `.transition.userData`, alive for the frame; read it back after the layout */
+bgame_ui_transition_config_t*
+bgame_ui_transition_config(bgame_ui_transition_config_t config);
 
 /**
  * Retrieve transient UI state

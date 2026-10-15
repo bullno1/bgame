@@ -505,6 +505,11 @@ bgame_ui_text_config(bgame_ui_text_config_t config) {
 	return bgame_make_frame_copy(config);
 }
 
+bgame_ui_transition_config_t*
+bgame_ui_transition_config(bgame_ui_transition_config_t config) {
+	return bgame_make_frame_copy(config);
+}
+
 bool
 bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
 	float progress = 1.f;
@@ -542,6 +547,10 @@ bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
 	}
 
 	float lerp_factor = curve(progress);
+	if (config != NULL) {
+		config->state = arguments.transitionState;
+		config->progress = progress;
+	}
 
 	if (arguments.properties & CLAY_TRANSITION_PROPERTY_X) {
 		arguments.current->boundingBox.x = cf_lerp(arguments.initial.boundingBox.x, arguments.target.boundingBox.x, lerp_factor);
