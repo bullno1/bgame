@@ -1,4 +1,3 @@
-#include "../internal.h"
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
 #include <bgame/allocator/frame.h>
@@ -19,6 +18,11 @@ static bfmt_stream_t bgame_str_null_stream = { 0 };
 void*
 bgame_alloc_for_frame(size_t size, size_t alignment) {
 	return barena_memalign(bgame_current_arena, size, alignment);
+}
+
+barena_t*
+bgame_frame_arena(void) {
+	return bgame_current_arena;
 }
 
 void*

@@ -9,6 +9,7 @@
 #include <bfmt.h>
 #include <bgame/str.h>
 
+struct barena_s;
 struct bgame_allocator_s;
 
 extern struct bgame_allocator_s* bgame_frame_allocator;
@@ -21,6 +22,10 @@ bgame_begin_frame_alloc(void);
 
 void
 bgame_end_frame_alloc(void* marker);
+
+/*! The arena of the current frame */
+struct barena_s*
+bgame_frame_arena(void);
 
 /**
  * A stream collecting text into the frame arena.

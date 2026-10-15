@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "ui/internal.h"
 #include <bgame/ui.h>
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
@@ -189,8 +190,26 @@ bgame_ui_locale(void) {
 	return &bgame_ui_locale_cache.locale;
 }
 
+uint32_t
+bgame_ui_open_element_id(void) {
+	return Clay_GetOpenElementId();
+}
+
+bool
+bgame_ui_element_bounds(uint32_t id, bgame_ui_rect_t* bounds) {
+	Clay_ElementData data = Clay_GetElementData((Clay_ElementId){ .id = id });
+	if (!data.found) { return false; }
+	*bounds = (bgame_ui_rect_t){
+		.x = data.boundingBox.x,
+		.y = data.boundingBox.y,
+		.width = data.boundingBox.width,
+		.height = data.boundingBox.height,
+	};
+	return true;
+}
+
 void
-bgame_update_ui(void) {
+bgame_ui_begin(void) {
 	int width, height;
 	cf_app_get_size(&width, &height);
 	Clay_SetLayoutDimensions((Clay_Dimensions){ (float)width, (float)height });
@@ -205,6 +224,34 @@ bgame_update_ui(void) {
 		(Clay_Vector2){ .y = cf_mouse_wheel_motion() },
 		CF_DELTA_TIME
 	);
+
+	Clay_ElementIdArray over = Clay_GetPointerOverIds();
+	uint32_t* over_ids = bgame_alloc_for_frame(
+		sizeof(uint32_t) * (size_t)BMAX(over.length, 1),
+		_Alignof(uint32_t)
+	);
+	for (int i = 0; i < over.length; ++i) {
+		over_ids[i] = over.internalArray[i].id;
+	}
+	bgame_ui_focus_begin(&(bgame_ui_pointer_t){
+		.x = cf_mouse_x(),
+		.y = cf_mouse_y(),
+		.moved = cf_mouse_motion_x() != 0.f || cf_mouse_motion_y() != 0.f,
+		.down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT),
+		.pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT),
+		.released = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT),
+		.over = over_ids,
+		.num_over = over.length,
+	});
+
+	Clay_BeginLayout();
+}
+
+Clay_RenderCommandArray
+bgame_ui_end(void) {
+	Clay_RenderCommandArray commands = Clay_EndLayout(CF_DELTA_TIME);
+	bgame_ui_focus_end();
+	return commands;
 }
 
 void

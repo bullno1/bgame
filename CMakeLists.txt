@@ -28,6 +28,7 @@ set(SOURCES
 	"src/ui.c"
 	"src/ui/rich_text.c"
 	"src/ui/sprite.c"
+	"src/ui/focus.c"
 	"src/internal.c"
 	"src/ui/gen/overlay_shd.h"
 )

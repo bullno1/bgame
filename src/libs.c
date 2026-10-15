@@ -19,6 +19,7 @@
 #include <barray.h>
 #include <bhandle.h>
 #include <barena.h>
+#include <bhamt.h>
 #include <bsfn.h>
 #include <bco.h>
 

@@ -42,7 +42,10 @@ typedef struct {
 } bgame_ui_transition_config_t;
 
 void
-bgame_update_ui(void);
+bgame_ui_begin(void);
+
+Clay_RenderCommandArray
+bgame_ui_end(void);
 
 /**
  * The language UI text is translated to, NULL for the source text.
