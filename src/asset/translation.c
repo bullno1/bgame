@@ -2,6 +2,7 @@
 #include <bgame/asset/translation.h>
 #include <bgame/allocator.h>
 #include <bgame/str.h>
+#include <bgame/chibihash64-stream.h>
 #include <bhash.h>
 #include <bfmt_log.h>
 #include <bfmt_cldr.h>
@@ -28,8 +29,12 @@ static bhash_hash_t
 bgame_translation_key_hash(const void* key, size_t size) {
 	(void)size;
 	const bgame_translation_key_t* translation_key = key;
-	uint64_t seed = bhash__chibihash64(translation_key->context.chars, translation_key->context.len, 0);
-	return bhash__chibihash64(translation_key->id.chars, translation_key->id.len, seed);
+	// Separated as gettext joins them, so the parts cannot shift into each other
+	ChibiHash64Ctx ctx = chibihash64_init(0);
+	chibihash64_append(&ctx, translation_key->context.chars, translation_key->context.len);
+	chibihash64_append(&ctx, "\x04", 1);
+	chibihash64_append(&ctx, translation_key->id.chars, translation_key->id.len);
+	return chibihash64_finish(&ctx);
 }
 
 static bool
