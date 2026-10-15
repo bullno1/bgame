@@ -21,27 +21,51 @@ bgame_ui_pop_text_config(const bgame_ui_rich_text_t* config) {
 }
 
 static void
+bgame_ui_draw_text_pass(
+	const bgame_ui_rich_text_t* rich_text,
+	CF_V2 pos,
+	Clay_Color color,
+	float stroke,
+	int blur
+) {
+	cf_push_text_stroke(stroke);
+	cf_push_font_blur(blur);
+	cf_draw_push_color(bgame_ui_color_from_clay(color));
+	cf_draw_text(rich_text->text.chars, pos, rich_text->text.len);
+	cf_draw_pop_color();
+	cf_pop_font_blur();
+	cf_pop_text_stroke();
+}
+
+static void
 bgame_ui_render_rich_text(
 	const Clay_RenderCommand* command,
 	void* userdata
 ) {
 	const bgame_ui_rich_text_t* rich_text = userdata;
 	const float* wrap_width = command->userData;
+	const bgame_ui_text_outline_t* outline = &rich_text->outline;
+	const bgame_ui_text_shadow_t* shadow = &rich_text->shadow;
+	CF_V2 pos = { command->boundingBox.x, -command->boundingBox.y };
+	bool outlined = outline->color.a > 0.f && outline->thickness > 0.f;
 
 	bgame_ui_push_text_config(rich_text, *wrap_width);
-	cf_push_font_blur(rich_text->font_blur);
-	cf_draw_push_color(bgame_ui_color_from_clay(rich_text->color));
-
 	cf_push_text_id(command->id);
-	cf_draw_text(
-		rich_text->text.chars,
-		(CF_V2){ command->boundingBox.x, -command->boundingBox.y },
-		rich_text->text.len
-	);
-	cf_pop_text_id();
 
-	cf_pop_font_blur();
-	cf_draw_pop_color();
+	if (shadow->color.a > 0.f) {
+		CF_V2 shadow_pos = { pos.x + shadow->offset.x, pos.y - shadow->offset.y };
+		// CF cannot blur a stroke, so a soft shadow is the fill alone
+		if (outlined && shadow->blur == 0) {
+			bgame_ui_draw_text_pass(rich_text, shadow_pos, shadow->color, outline->thickness, 0);
+		}
+		bgame_ui_draw_text_pass(rich_text, shadow_pos, shadow->color, 0.f, shadow->blur);
+	}
+	if (outlined) {
+		bgame_ui_draw_text_pass(rich_text, pos, outline->color, outline->thickness, 0);
+	}
+	bgame_ui_draw_text_pass(rich_text, pos, rich_text->color, 0.f, 0);
+
+	cf_pop_text_id();
 	bgame_ui_pop_text_config(rich_text);
 }
 
