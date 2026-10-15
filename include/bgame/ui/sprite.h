@@ -3,6 +3,7 @@
 
 #include "../ui.h"
 #include "../asset/sprite.h"
+#include "../draw.h"
 
 struct CF_Sprite;
 
@@ -10,11 +11,16 @@ typedef enum {
 	BGAME_UI_SPRITE_STRETCH,
 	BGAME_UI_SPRITE_9_SLICE,
 	BGAME_UI_SPRITE_9_SLICE_TILED,
+	// The frame repeated over the element, see bgame_draw_sprite_tiled.
+	BGAME_UI_SPRITE_TILED,
 } bgame_ui_sprite_mode_t;
 
 typedef struct {
 	struct CF_Sprite* sprite;
 	bgame_ui_sprite_mode_t mode;
+	// TILED only. `origin` is in pixels from the element's top-left, y down;
+	// a positive rotation turns counter-clockwise on screen.
+	bgame_tiling_t tiling;
 } bgame_ui_sprite_config_t;
 
 Clay_CustomElementConfig

@@ -1003,6 +1003,12 @@ int main(int argc, const char* argv[])
 			config.skip_glsl300 = true;
 		}
 
+		// The blit flavor lacks most of the draw flavor's globals; a stub that uses
+		// them branches on this define.
+		CF_ShaderCompilerDefine blit_define = { "BGAME_SHADER_BLIT", "1" };
+		barray_push(user_defines.defines, blit_define, NULL);
+		config.builtin_defines = user_defines.defines;
+		config.num_builtin_defines = (int)barray_len(user_defines.defines);
 		CF_ShaderCompilerResult blit_shader_result = cute_shader_compile(
 			shaderc_blit_fs,
 			CUTE_SHADER_STAGE_FRAGMENT,
@@ -1010,6 +1016,9 @@ int main(int argc, const char* argv[])
 		);
 		if (!blit_shader_result.success) {
 			fprintf(stderr, "%s\n", blit_shader_result.error_message);
+			// The grafted glsl300 pointer belongs to draw_gles_result.
+			draw_shader_result.bytecode.glsl300_src = NULL;
+			draw_shader_result.bytecode.glsl300_src_size = 0;
 			cute_shader_free_result(draw_shader_result);
 			cute_shader_free_result(draw_gles_result);
 			cute_shader_free_result(blit_shader_result);

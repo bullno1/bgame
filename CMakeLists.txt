@@ -31,12 +31,19 @@ set(SOURCES
 	"src/ui/focus.c"
 	"src/internal.c"
 	"src/ui/gen/overlay_shd.h"
+	"src/draw.c"
+	"src/draw/gen/sprite_tiled_shd.h"
 )
 
 compile_draw_shader(
 	${CMAKE_CURRENT_SOURCE_DIR}/src/ui/overlay.glsl
 	bgame_ui_overlay_shd_bytecode
 	${CMAKE_CURRENT_SOURCE_DIR}/src/ui/gen/overlay_shd.h
+)
+compile_draw_shader(
+	${CMAKE_CURRENT_SOURCE_DIR}/src/draw/sprite_tiled.glsl
+	bgame_sprite_tiled_shd_bytecode
+	${CMAKE_CURRENT_SOURCE_DIR}/src/draw/gen/sprite_tiled_shd.h
 )
 
 add_library(bgame STATIC "${SOURCES}")

@@ -25,6 +25,15 @@ render_sprite(const Clay_RenderCommand* command, void* userdata) {
 		case BGAME_UI_SPRITE_9_SLICE_TILED:
 			cf_draw_sprite_9_slice_tiled(&sprite);
 			break;
+		case BGAME_UI_SPRITE_TILED: {
+			bgame_tiling_t tiling = config.tiling;
+			tiling.origin = cf_v2(bbox.x + tiling.origin.x, -(bbox.y + tiling.origin.y));
+			CF_Aabb area = cf_make_aabb(
+				cf_v2(bbox.x, -(bbox.y + bbox.height)),
+				cf_v2(bbox.x + bbox.width, -bbox.y)
+			);
+			bgame_draw_sprite_tiled(&sprite, area, tiling);
+		} break;
 	}
 }
 
