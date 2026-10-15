@@ -16,6 +16,8 @@
 
 #define BUI_GEN_ID() ((Clay_ElementId){ 0 })
 
+#define BGAME_UI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
+
 struct bgame_asset_bundle_s;
 
 typedef void (*bgame_custom_ui_render_fn_t)(
@@ -80,6 +82,27 @@ bgame_end_render_ui(void);
 
 void*
 bgame_ui_text_config(bgame_ui_text_config_t config);
+
+/**
+ * Retrieve transient UI state
+ *
+ * The state is keyed by @p tag and the current open element's id.
+ * If the state was not found, it will be allocated and zero initialized.
+ * The same value will be returned the next frame when this function is called
+ * again.
+ *
+ * The state is arena-allocated so it does not have a stable address.
+ * It will be copied from frame to frame.
+ *
+ * @param size How big the state is
+ * @param alignment The alignment of the state type
+ * @param tag An arbitrary pointer to differentiate states of the same elements
+ * @return the transient UI state
+ */
+void*
+bgame_ui_state(size_t size, size_t alignment, const void* tag);
+
+#define bgame_ui_state(TAG) (typeof(TAG.bgame_ui__type)*)bgame_ui_state(sizeof(TAG.bgame_ui__type), _Alignof(typeof(TAG.bgame_ui__type)), &TAG)
 
 Clay_CustomElementConfig
 bgame_custom_ui_element(

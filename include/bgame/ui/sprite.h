@@ -4,6 +4,8 @@
 #include "../ui.h"
 #include "../asset/sprite.h"
 
+struct CF_Sprite;
+
 typedef enum {
 	BGAME_UI_SPRITE_STRETCH,
 	BGAME_UI_SPRITE_9_SLICE,
@@ -17,5 +19,8 @@ typedef struct {
 
 Clay_CustomElementConfig
 bgame_ui_sprite(bgame_ui_sprite_config_t config);
+
+struct CF_Sprite*
+bgame_ui_sprite_at_anim(const struct CF_Sprite* sprite, const char* animation);
 
 #endif

@@ -6,6 +6,7 @@
 #include <bgame/allocator/frame.h>
 #include <bfmt_log.h>
 #include <bfmt_cldr.h>
+#include <bhamt.h>
 #include <bgame/shader.h>
 #include <blog.h>
 #include <bminmax.h>
@@ -15,6 +16,7 @@
 #include <cute_draw.h>
 #include <cute_math.h>
 #include "ui/gen/overlay_shd.h"
+#include <bgame/chibihash64-stream.h>
 
 typedef struct {
 	uint16_t capacity;
@@ -26,11 +28,20 @@ typedef struct {
 	void (*render)(const Clay_RenderCommand* command, void* userdata);
 } bgame_custom_ui_element_t;
 
+typedef struct {
+	const void* tag;
+	uint32_t id;
+} bgame_ui_state_key_t;
+
+typedef BHAMT_TABLE(bgame_ui_state_key_t, void*) bgame_ui_state_table_t;
+
 BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
 BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
 BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
 BGAME_VAR(bgame_translation_t*, bgame_ui_current_translation) = NULL;
+BGAME_VAR(bgame_ui_state_table_t, bgame_ui_previous_states) = { 0 };
+BGAME_VAR(bgame_ui_state_table_t, bgame_ui_current_states) = { 0 };
 
 // Plain static on purpose: a reload zeroes it, so its callbacks are never stale
 static struct {
@@ -96,6 +107,22 @@ bgame_ui_measure_text(
 	return (Clay_Dimensions){ .width = size.x, .height = size.y };
 }
 
+static bhamt_hash_t
+bgame_ui_state_key_hash(const void* gkey, size_t size) {
+	const bgame_ui_state_key_t* key = gkey;
+	ChibiHash64Ctx ctx = chibihash64_init(0);
+	chibihash64_append(&ctx, &key->tag, sizeof(key->tag));
+	chibihash64_append(&ctx, &key->id, sizeof(key->id));
+	return chibihash64_finish(&ctx);
+}
+
+static bool
+bgame_ui_state_key_eq(const void* glhs, const void* grhs, size_t size) {
+	const bgame_ui_state_key_t* lhs = glhs;
+	const bgame_ui_state_key_t* rhs = grhs;
+	return lhs->tag == rhs->tag && lhs->id == rhs->id;
+}
+
 static void
 bgame_ui_init(void) {
 	size_t mem_size = Clay_MinMemorySize();
@@ -111,6 +138,9 @@ bgame_ui_init(void) {
 		}
 	);
 	Clay_SetMeasureTextFunction(bgame_ui_measure_text, NULL);
+
+	bhamt_init(&bgame_ui_previous_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
+	bhamt_init(&bgame_ui_current_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
 }
 
 static void
@@ -243,6 +273,12 @@ bgame_ui_begin(void) {
 		.over = over_ids,
 		.num_over = over.length,
 	});
+
+	// Swap UI state
+	{
+		bgame_ui_previous_states = bgame_ui_current_states;
+		bhamt_init(&bgame_ui_current_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
+	}
 
 	Clay_BeginLayout();
 }
@@ -554,4 +590,26 @@ bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
 	}
 
 	return progress >= 1.f;
+}
+
+void*
+(bgame_ui_state)(size_t size, size_t alignment, const void* tag) {
+	bgame_ui_state_key_t key = {
+		.id = bgame_ui_open_element_id(),
+		.tag = tag,
+	};
+	barena_t* frame_arena = bgame_frame_arena();
+	void** state_ptr = bhamt_upsert(&bgame_ui_current_states, key, frame_arena);
+	if (*state_ptr == NULL) {  // Never seen this frame
+		*state_ptr = bgame_alloc_for_frame(size, alignment);
+
+		void** previous_state_ptr = bhamt_get(&bgame_ui_previous_states, key);
+		if (previous_state_ptr == NULL) {  // Never seen before
+			memset(*state_ptr, 0, size);
+		} else {  // Seen last frame
+			memcpy(*state_ptr, *previous_state_ptr, size);
+		}
+	}
+
+	return *state_ptr;
 }
