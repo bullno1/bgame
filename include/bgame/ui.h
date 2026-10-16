@@ -16,7 +16,24 @@
 
 #define BUI_GEN_ID() ((Clay_ElementId){ 0 })
 
+/*! Declare a tag to be used with @ref bgame_ui_state */
 #define BUI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
+
+/*! Declare a tag to be used with @ref bgame_ui_push_ctx */
+#define BUI_CTX_TAG(TYPE) struct { bgame_ui__ctx_link_t bgame_ui__link; TYPE bgame_ui__ctx; }
+
+/**
+ * Push a context for the duration of the following block
+ *
+ * The new entry is available as `BUI_CTX` inside the block.
+ * An optional expression, evaluated once before the block, may initialize it.
+ */
+#define BUI_WITH_CTX(TAG, ...) \
+	for ( \
+		typeof(TAG.bgame_ui__ctx)* BUI_CTX = bgame_ui_push_ctx(TAG); \
+		(BUI_CTX != NULL) && (__VA_OPT__((void)(__VA_ARGS__),) 1); \
+		bgame_ui_pop_ctx(TAG), BUI_CTX = NULL \
+	)
 
 struct bgame_asset_bundle_s;
 
@@ -94,7 +111,7 @@ bgame_ui_transition_config(bgame_ui_transition_config_t config);
 /**
  * Retrieve transient UI state
  *
- * The state is keyed by @p tag and the current open element's id.
+ * The state is keyed by @p TAG (declared with @ref BUI_STATE_TAG) and the current open element's id.
  * If the state was not found, it will be allocated and zero initialized.
  * The same value will be returned the next frame when this function is called
  * again.
@@ -102,15 +119,66 @@ bgame_ui_transition_config(bgame_ui_transition_config_t config);
  * The state is arena-allocated so it does not have a stable address.
  * It will be copied from frame to frame.
  *
- * @param size How big the state is
- * @param alignment The alignment of the state type
- * @param tag An arbitrary pointer to differentiate states of the same elements
+ * @param TAG A variable, declared with @ref BUI_STATE_TAG, whose address differentiates states of the same element
  * @return the transient UI state
+ *
+ * @see BUI_STATE_TAG
  */
-void*
-bgame_ui_state(size_t size, size_t alignment, const void* tag);
+#define bgame_ui_state(TAG) \
+	(typeof(TAG.bgame_ui__type)*)bgame_ui__state( \
+		sizeof(TAG.bgame_ui__type), \
+		_Alignof(typeof(TAG.bgame_ui__type)), \
+		&TAG \
+	)
 
-#define bgame_ui_state(TAG) (typeof(TAG.bgame_ui__type)*)bgame_ui_state(sizeof(TAG.bgame_ui__type), _Alignof(typeof(TAG.bgame_ui__type)), &TAG)
+/**
+ * Create a copy of the current context
+ *
+ * A context stack is useful for passing data deep into a UI tree.
+ * For example: theming/styling data.
+ *
+ * This function creates a copy of the current context identified by @p TAG (
+ * declared with @ref BUI_CTX_TAG).
+ * If a context does not exist yet, it will be created and zero-initialized.
+ *
+ * @param TAG A variable, declared with @ref BUI_CTX_TAG, whose address differentiates contexts
+ * @return the new entry in the context stack
+ *
+ * @see BUI_CTX_TAG
+ */
+#define bgame_ui_push_ctx(TAG) \
+	((typeof(TAG.bgame_ui__ctx)*)bgame_ui__push_ctx( \
+		sizeof(TAG), \
+		_Alignof(typeof(TAG)), \
+		offsetof(typeof(TAG), bgame_ui__ctx), \
+		&TAG \
+	))
+
+/**
+ * Pop the current context and return the previous context
+ *
+ * Does nothing and returns NULL if there is nothing on the stack.
+ * Returns NULL if the stack becomes empty.
+ */
+#define bgame_ui_pop_ctx(TAG) \
+	((typeof(TAG.bgame_ui__ctx)*)bgame_ui__pop_ctx( \
+		offsetof(typeof(TAG), bgame_ui__ctx), \
+		&TAG \
+	))
+
+/**
+ * Retrieve the current context
+ *
+ * Only the code that pushed a context may change it.
+ * If there is nothing on the stack, a zero-initialized context is returned.
+ */
+#define bgame_ui_peek_ctx(TAG) \
+	((const typeof(TAG.bgame_ui__ctx)*)bgame_ui__peek_ctx( \
+		sizeof(TAG), \
+		_Alignof(typeof(TAG)), \
+		offsetof(typeof(TAG), bgame_ui__ctx), \
+		&TAG \
+	))
 
 Clay_CustomElementConfig
 bgame_custom_ui_element(
@@ -183,5 +251,23 @@ bgame_ui_aabb(Clay_BoundingBox bbox) {
 		},
 	};
 }
+
+typedef struct bgame_ui__ctx_link_s bgame_ui__ctx_link_t;
+
+struct bgame_ui__ctx_link_s {
+	bgame_ui__ctx_link_t* next;
+};
+
+void*
+bgame_ui__state(size_t size, size_t alignment, const void* tag);
+
+void*
+bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag);
+
+void*
+bgame_ui__pop_ctx(ptrdiff_t offset, const void* tag);
+
+const void*
+bgame_ui__peek_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag);
 
 #endif

@@ -16,6 +16,7 @@
 #include <cute_draw.h>
 #include <cute_math.h>
 #include "ui/gen/overlay_shd.h"
+#include <bgame/chibihash64.h>
 #include <bgame/chibihash64-stream.h>
 
 typedef struct {
@@ -33,7 +34,14 @@ typedef struct {
 	uint32_t id;
 } bgame_ui_state_key_t;
 
+typedef struct {
+	bgame_ui__ctx_link_t* current;
+	bgame_ui__ctx_link_t* pool;
+	bgame_ui__ctx_link_t* empty;  // What a peek of an empty stack sees
+} bgame_ui_ctx_stack_t;
+
 typedef BHAMT_TABLE(bgame_ui_state_key_t, void*) bgame_ui_state_table_t;
+typedef BHAMT_TABLE(const void*, bgame_ui_ctx_stack_t) bgame_ui_ctx_stacks_t;
 
 BGAME_VAR(void*, bgame_ui_mem) = NULL;
 BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
@@ -42,6 +50,8 @@ BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
 BGAME_VAR(bgame_translation_t*, bgame_ui_current_translation) = NULL;
 BGAME_VAR(bgame_ui_state_table_t, bgame_ui_previous_states) = { 0 };
 BGAME_VAR(bgame_ui_state_table_t, bgame_ui_current_states) = { 0 };
+// Plain static on purpose: rebuilt in frame memory by every bgame_ui_begin
+static bgame_ui_ctx_stacks_t bgame_ui_ctx_stacks = { 0 };
 
 // Plain static on purpose: a reload zeroes it, so its callbacks are never stale
 static struct {
@@ -121,6 +131,18 @@ bgame_ui_state_key_eq(const void* glhs, const void* grhs, size_t size) {
 	const bgame_ui_state_key_t* lhs = glhs;
 	const bgame_ui_state_key_t* rhs = grhs;
 	return lhs->tag == rhs->tag && lhs->id == rhs->id;
+}
+
+static bhamt_hash_t
+bgame_ui_ptr_hash(const void* key, size_t size) {
+	return chibihash64(key, sizeof(void*), 0);
+}
+
+static bool
+bgame_ui_ptr_eq(const void* glhs, const void* grhs, size_t size) {
+	const void* const* lhs = glhs;
+	const void* const* rhs = grhs;
+	return *lhs == *rhs;
 }
 
 static void
@@ -279,6 +301,9 @@ bgame_ui_begin(void) {
 		bgame_ui_previous_states = bgame_ui_current_states;
 		bhamt_init(&bgame_ui_current_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
 	}
+
+	// Reset context stacks
+	bhamt_init(&bgame_ui_ctx_stacks, bgame_ui_ptr_hash, bgame_ui_ptr_eq);
 
 	Clay_BeginLayout();
 }
@@ -602,7 +627,7 @@ bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
 }
 
 void*
-(bgame_ui_state)(size_t size, size_t alignment, const void* tag) {
+bgame_ui__state(size_t size, size_t alignment, const void* tag) {
 	bgame_ui_state_key_t key = {
 		.id = bgame_ui_open_element_id(),
 		.tag = tag,
@@ -621,4 +646,62 @@ void*
 	}
 
 	return *state_ptr;
+}
+
+void*
+bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag) {
+	barena_t* frame_arena = bgame_frame_arena();
+
+	bgame_ui_ctx_stack_t* stack = bhamt_upsert(&bgame_ui_ctx_stacks, tag, frame_arena);
+
+	// Alloc a new context
+	bgame_ui__ctx_link_t* ctx;
+	if (stack->pool != NULL) {  // From pool
+		ctx = stack->pool;
+		stack->pool = ctx->next;
+	} else {  // From arena
+		ctx = bgame_alloc_for_frame(size, alignment);
+	}
+
+	// Copy from current context or zero-initialize
+	if (stack->current != NULL) {
+		memcpy(ctx, stack->current, size);
+	} else {
+		memset(ctx, 0, size);
+	}
+
+	// Link to existing stack
+	ctx->next = stack->current;
+	stack->current = ctx;
+
+	return (char*)ctx + offset;
+}
+
+void*
+bgame_ui__pop_ctx(ptrdiff_t offset, const void* tag) {
+	bgame_ui_ctx_stack_t* stack = bhamt_get(&bgame_ui_ctx_stacks, tag);
+	if (stack == NULL || stack->current == NULL) { return NULL; }
+
+	bgame_ui__ctx_link_t* ctx = stack->current;
+	stack->current = ctx->next;
+	ctx->next = stack->pool;
+	stack->pool = ctx;
+
+	return stack->current != NULL ? (char*)stack->current + offset : NULL;
+}
+
+const void*
+bgame_ui__peek_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag) {
+	barena_t* frame_arena = bgame_frame_arena();
+	bgame_ui_ctx_stack_t* stack = bhamt_upsert(&bgame_ui_ctx_stacks, tag, frame_arena);
+
+	if (stack->current != NULL) {
+		return (char*)stack->current + offset;
+	}
+
+	if (stack->empty == NULL) {
+		stack->empty = bgame_alloc_for_frame(size, alignment);
+		memset(stack->empty, 0, size);
+	}
+	return (char*)stack->empty + offset;
 }
