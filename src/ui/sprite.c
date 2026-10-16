@@ -2,7 +2,7 @@
 #include <bgame/allocator/frame.h>
 #include <cute_sprite.h>
 
-static BGAME_UI_STATE_TAG(CF_Sprite) bgame_ui_sprite_tag;
+static BUI_STATE_TAG(CF_Sprite) bgame_ui_sprite_tag;
 
 static void
 render_sprite(const Clay_RenderCommand* command, void* userdata) {

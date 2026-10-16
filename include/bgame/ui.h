@@ -16,7 +16,7 @@
 
 #define BUI_GEN_ID() ((Clay_ElementId){ 0 })
 
-#define BGAME_UI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
+#define BUI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
 
 struct bgame_asset_bundle_s;
 
