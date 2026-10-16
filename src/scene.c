@@ -1,8 +1,10 @@
 #include <bgame/scene.h>
 #include <bgame/reloadable.h>
+#include <bgame/allocator.h>
 #include <bgame/allocator/frame.h>
 #include <cute_string.h>
 #include <cute_app.h>
+#include <bfmt_log.h>
 #include <blog.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,8 +15,11 @@
 
 typedef struct bgame_scene_entry_s {
 	const char* name;
-	void* data;
+	size_t arg_size;
+	_Alignas(bgame_max_align_t) char arg[BGAME_SCENE_ARG_MAX];
 } bgame_scene_entry_t;
+
+static const _Alignas(bgame_max_align_t) char bgame_scene_zero_arg[BGAME_SCENE_ARG_MAX] = { 0 };
 
 typedef enum {
 	BGAME_RUN_SCENE,
@@ -88,33 +93,69 @@ bgame_zero_scene_vars(const char* scene_name) {
 	}
 }
 
-void
-bgame_set_next_scene_data(void* data) {
-	bgame_scene_mgr.next_scene.data = data;
+static bgame_scene_reg_t
+bgame_find_scene_by_def(const bgame_scene_def_t* def) {
+	AUTOLIST_FOREACH(entry, bgame_scene_list) {
+		if (entry->value_addr == def) {
+			return (bgame_scene_reg_t){
+				.name = sintern(entry->name),
+				.def = entry->value_addr,
+			};
+		}
+	}
+
+	BLOG_ERROR("Scene is not registered");
+	return bgame_empty_scene();
+}
+
+static void
+bgame_set_next_scene(const char* name, bgame_scene_arg_t arg, bgame_scene_op_t op) {
+	bgame_scene_entry_t* next = &bgame_scene_mgr.next_scene;
+	*next = (bgame_scene_entry_t){ .name = name };
+	if (arg.size > BGAME_SCENE_ARG_MAX) {
+		BFMT_ERROR("Argument for scene ", name, " is ", arg.size, " bytes, dropped");
+	} else if (arg.size > 0) {
+		memcpy(next->arg, arg.data, arg.size);
+		next->arg_size = arg.size;
+	}
+	bgame_scene_mgr.scene_op = op;
 }
 
 void
-bgame_switch_scene(const char* name) {
-	bgame_scene_mgr.next_scene.name = name;
-	bgame_scene_mgr.scene_op = BGAME_SWITCH_SCENE;
+bgame__switch_scene(const bgame_scene_def_t* def, bgame_scene_arg_t arg) {
+	bgame_set_next_scene(bgame_find_scene_by_def(def).name, arg, BGAME_SWITCH_SCENE);
+}
+
+void
+bgame_switch_scene_by_name(const char* name) {
+	bgame_set_next_scene(name, (bgame_scene_arg_t){ 0 }, BGAME_SWITCH_SCENE);
 }
 
 void
 bgame_reload_scene(void) {
-	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_mgr.next_scene.name = current_entry->name;
+	bgame_scene_mgr.next_scene = bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
 	bgame_scene_mgr.scene_op = BGAME_SWITCH_SCENE;
 }
 
-void
-bgame_push_scene(const char* name) {
+static bool
+bgame_can_push_scene(void) {
 	if (bgame_scene_mgr.current_scene_index >= BGAME_SCENE_STACK_SIZE - 1) {
 		BLOG_ERROR("Scene stack is full");
-		return;
+		return false;
 	}
+	return true;
+}
 
-	bgame_scene_mgr.next_scene.name = name;
-	bgame_scene_mgr.scene_op = BGAME_PUSH_SCENE;
+void
+bgame__push_scene(const bgame_scene_def_t* def, bgame_scene_arg_t arg) {
+	if (!bgame_can_push_scene()) { return; }
+	bgame_set_next_scene(bgame_find_scene_by_def(def).name, arg, BGAME_PUSH_SCENE);
+}
+
+void
+bgame_push_scene_by_name(const char* name) {
+	if (!bgame_can_push_scene()) { return; }
+	bgame_set_next_scene(name, (bgame_scene_arg_t){ 0 }, BGAME_PUSH_SCENE);
 }
 
 void
@@ -128,10 +169,21 @@ bgame_current_scene(void) {
 	return bgame_find_scene(current_entry->name);
 }
 
-void*
-bgame_current_scene_data(void) {
+const void*
+bgame__scene_arg(const bgame_scene_def_t* def, size_t size) {
 	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	return current_entry->data;
+	if (bgame_scene_mgr.current_scene.def != def) {
+		BFMT_ERROR("Scene ", current_entry->name, " asked for another scene's argument");
+		return bgame_scene_zero_arg;
+	}
+	if (current_entry->arg_size != 0 && current_entry->arg_size != size) {
+		BFMT_ERROR(
+			"Scene ", current_entry->name, " was given ", current_entry->arg_size,
+			" bytes of argument, expects ", size
+		);
+		return bgame_scene_zero_arg;
+	}
+	return current_entry->arg;
 }
 
 bgame_scene_state_t
