@@ -29,15 +29,31 @@ typedef struct {
 	int blur;
 } bgame_ui_text_shadow_t;
 
+/*! How a text looks. Always complete: a scope derives one by copying and editing. */
 typedef struct {
-	bgame_ui_rich_text_sizing_t sizing;
-	bgame_ui_rich_text_justify_t justify;
-	bgame_str_t text;
 	const bgame_font_t* font;
 	float font_size;
 	Clay_Color color;
 	bgame_ui_text_outline_t outline;
 	bgame_ui_text_shadow_t shadow;
+} bgame_ui_text_style_t;
+
+typedef BUI_CTX_TAG(bgame_ui_text_style_t) bgame_ui_text_style_tag_t;
+
+/**
+ * The style of every text that names none
+ *
+ * A style without a font, this one when nothing was pushed, draws red in the
+ * built-in font so that a missing style is seen.
+ */
+extern bgame_ui_text_style_tag_t bgame_ui_text_style;
+
+typedef struct {
+	bgame_str_t text;
+	bgame_ui_rich_text_sizing_t sizing;
+	bgame_ui_rich_text_justify_t justify;
+	/*! NULL for the current @ref bgame_ui_text_style */
+	const bgame_ui_text_style_t* style;
 } bgame_ui_rich_text_t;
 
 void
