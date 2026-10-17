@@ -4,6 +4,7 @@
 #include "../ui.h"
 #include "../asset/font.h"
 #include "../str.h"
+#include <cute_color.h>
 
 typedef enum {
 	BGAME_UI_RICH_TEXT_WRAP = 0,
@@ -18,13 +19,13 @@ typedef enum {
 
 /*! A stroke around the glyphs, drawn under the fill. None when the color is transparent. */
 typedef struct {
-	Clay_Color color;
+	CF_Color color;
 	float thickness;
 } bgame_ui_text_outline_t;
 
 /*! A copy of the text drawn under it, offset in UI pixels (y down). None when the color is transparent. */
 typedef struct {
-	Clay_Color color;
+	CF_Color color;
 	Clay_Vector2 offset;
 	int blur;
 } bgame_ui_text_shadow_t;
@@ -33,7 +34,7 @@ typedef struct {
 typedef struct {
 	const bgame_font_t* font;
 	float font_size;
-	Clay_Color color;
+	CF_Color color;
 	bgame_ui_text_outline_t outline;
 	bgame_ui_text_shadow_t shadow;
 } bgame_ui_text_style_t;

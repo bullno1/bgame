@@ -10,7 +10,7 @@ static const bgame_font_t bgame_ui_fallback_font = { .name = "Calibri" };
 static const bgame_ui_text_style_t bgame_ui_fallback_text_style = {
 	.font = &bgame_ui_fallback_font,
 	.font_size = 20.f,
-	.color = { 255.f, 0.f, 0.f, 255.f },
+	.color = { .r = 1.f, .g = 0.f, .b = 0.f, .a = 1.f },
 };
 
 // What the render callback needs, copied into the frame
@@ -54,13 +54,13 @@ static void
 bgame_ui_draw_text_pass(
 	const bgame_ui_rich_text_draw_t* draw,
 	CF_V2 pos,
-	Clay_Color color,
+	CF_Color color,
 	float stroke,
 	int blur
 ) {
 	cf_push_text_stroke(stroke);
 	cf_push_font_blur(blur);
-	cf_draw_push_color(bgame_ui_color_from_clay(color));
+	cf_draw_push_color(color);
 	cf_draw_text(draw->text.chars, pos, draw->text.len);
 	cf_draw_pop_color();
 	cf_pop_font_blur();
