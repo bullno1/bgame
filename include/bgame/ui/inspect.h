@@ -12,7 +12,21 @@ typedef enum {
 	BGAME_UI_PICK_NAMED         = 1 << 2,
 	/*! Let the UI see the pointer meanwhile. Hidden by default, so the press that locks a pick does not activate what it lands on. */
 	BGAME_UI_PICK_PASS_POINTER  = 1 << 3,
-	/*! On lock, open the picked element's declaration with the editor command */
+	/**
+	 * On lock, open the picked element's declaration with the editor command
+	 *
+	 * The command is the `BGAME_EDITOR` environment variable, split on whitespace with
+	 * double quotes grouping, `{file}` and `{line}` replaced, run without a shell:
+	 *
+	 *   vim:    `vim --servername GAME --remote-send "<C-\><C-N>:drop {file} | {line}<CR>"`
+	 *           for a vim started with `--servername GAME`
+	 *   nvim:   `nvim --server /tmp/nvim.sock --remote-send "<C-\><C-N>:drop {file} | {line}<CR>"`
+	 *           for an nvim started with `--listen /tmp/nvim.sock`
+	 *   vscode: `code --goto {file}:{line}`
+	 *
+	 * `--remote-send` only posts keys: with no server it fails instead of starting a
+	 * headless editor, and `:drop` reuses a window showing the file.
+	 */
 	BGAME_UI_PICK_EDIT          = 1 << 4,
 } bgame_ui_pick_flag_t;
 
@@ -41,7 +55,7 @@ bgame_ui_inspect_select(bgame_ui_id_t id);
  * Open an element's declaration with the editor command, false when the element is unknown
  *
  * The location is logged; the command in the `BGAME_EDITOR` environment variable, if
- * set, runs with `{file}` and `{line}` replaced.
+ * set, runs with `{file}` and `{line}` replaced. See @ref BGAME_UI_PICK_EDIT for templates.
  */
 bool
 bgame_ui_inspect_edit(bgame_ui_id_t id);
