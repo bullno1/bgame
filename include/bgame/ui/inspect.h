@@ -65,7 +65,73 @@ bgame_ui_inspect_select(bgame_ui_id_t id);
 bool
 bgame_ui_inspect_edit(bgame_ui_id_t id);
 
-/*! Draw the tree and the selection's properties with dear imgui, for last frame's layout */
+typedef struct bgame_ui_inspect_node_s bgame_ui_inspect_node_t;
+
+/*! An element of last frame's tree */
+struct bgame_ui_inspect_node_s {
+	bgame_ui_id_t id;
+	/*! NULL for an anonymous element and the root */
+	const char* name;
+	uint64_t index;
+	bgame_ui_loc_t loc;
+	const bgame_ui_element_t* decl;
+	/*! 0 for the root */
+	int depth;
+	/*! The subtree follows the node in memory, in declaration order */
+	int num_descendants;
+	/*! NULL for a leaf */
+	const bgame_ui_inspect_node_t* first_child;
+	/*! NULL for the last child */
+	const bgame_ui_inspect_node_t* next_sibling;
+	bgame_ui_rect_t bounds;
+	/*! The part of @ref bounds left visible by clipping */
+	bgame_ui_rect_t clip;
+	/*! NULL for an element without a transition */
+	const bgame_ui_transition_state_t* transition;
+};
+
+/*! The children of a node, in declaration order */
+#define BGAME_UI_INSPECT_FOREACH_CHILD(child, parent) \
+	for ( \
+		const bgame_ui_inspect_node_t* child = (parent)->first_child; \
+		child != NULL; \
+		child = child->next_sibling \
+	)
+
+/**
+ * Last frame's tree root
+ *
+ * The whole tree follows the root in memory, so `root + 1` for `root->num_descendants`
+ * is every element in declaration order.
+ */
+const bgame_ui_inspect_node_t*
+bgame_ui_inspect_tree(void);
+
+/*! An element of a tree, NULL for one that is not in it */
+const bgame_ui_inspect_node_t*
+bgame_ui_inspect_find(const bgame_ui_inspect_node_t* tree, bgame_ui_id_t id);
+
+/**
+ * Called every frame a renderer shows the tree, with the element under its pointer, 0 for none
+ *
+ * The selection is highlighted while one does.
+ */
+void
+bgame_ui_inspect_hover(bgame_ui_id_t id);
+
+const char*
+bgame_ui_sizing_name(bgame_ui_sizing_type_t type);
+
+const char*
+bgame_ui_align_name(bgame_ui_align_t align);
+
+const char*
+bgame_ui_attach_name(bgame_ui_attach_t attach);
+
+const char*
+bgame_ui_transition_phase_name(bgame_ui_transition_phase_t phase);
+
+/*! The default renderer: the tree and the selection's properties with dear imgui */
 void
 bgame_ui_inspect(void);
 

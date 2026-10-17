@@ -2,8 +2,6 @@
 #include <bgame/reloadable.h>
 #include <bgame/allocator/frame.h>
 #include <bfmt_log.h>
-#include <dcimgui.h>
-#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include <SDL3/SDL_stdinc.h>
@@ -31,6 +29,7 @@ BGAME_VAR(bool, ui_inspect_swallowing) = false;
 // Plain statics on purpose: per frame
 static bgame_ui_id_t ui_inspect_hovered = 0;
 static bgame_ui_id_t ui_inspect_picked = 0;
+/*! A renderer called @ref bgame_ui_inspect_hover this frame */
 static bool ui_inspect_shown = false;
 
 static void open_in_editor(bgame_ui_loc_t loc);
@@ -38,10 +37,18 @@ static void open_in_editor(bgame_ui_loc_t loc);
 bgame_ui_id_t
 bgame_ui_inspect_highlight(void) {
 	bool shown = ui_inspect_shown;
+	bgame_ui_id_t hovered = ui_inspect_hovered;
 	ui_inspect_shown = false;
-	if (shown && ui_inspect_hovered != 0) { return ui_inspect_hovered; }
+	ui_inspect_hovered = 0;
+	if (shown && hovered != 0) { return hovered; }
 	if (shown || ui_inspect_picking) { return ui_inspect_selected; }
 	return 0;
+}
+
+void
+bgame_ui_inspect_hover(bgame_ui_id_t id) {
+	ui_inspect_shown = true;
+	ui_inspect_hovered = id;
 }
 
 // Picking {{{
@@ -220,20 +227,12 @@ open_in_editor(bgame_ui_loc_t loc) {
 #endif
 }
 
-static void
-draw_loc(const char* label, bgame_ui_loc_t loc) {
-	if (loc.file == NULL) { return; }
-	ImGui_LabelText(label, "%s:%d", loc.file, loc.line);
-	ImGui_SameLine();
-	ImGui_PushIDPtr(label);
-	if (ImGui_Button("Open")) { open_in_editor(loc); }
-	ImGui_PopID();
-}
-
 // }}}
 
-static const char*
-sizing_name(bgame_ui_sizing_type_t type) {
+// Names {{{
+
+const char*
+bgame_ui_sizing_name(bgame_ui_sizing_type_t type) {
 	switch (type) {
 		case BGAME_UI_SIZING_FIT: return "fit";
 		case BGAME_UI_SIZING_GROW: return "grow";
@@ -243,8 +242,8 @@ sizing_name(bgame_ui_sizing_type_t type) {
 	return "?";
 }
 
-static const char*
-align_name(bgame_ui_align_t align) {
+const char*
+bgame_ui_align_name(bgame_ui_align_t align) {
 	switch (align) {
 		case BGAME_UI_ALIGN_START: return "start";
 		case BGAME_UI_ALIGN_CENTER: return "center";
@@ -253,8 +252,8 @@ align_name(bgame_ui_align_t align) {
 	return "?";
 }
 
-static const char*
-attach_name(bgame_ui_attach_t attach) {
+const char*
+bgame_ui_attach_name(bgame_ui_attach_t attach) {
 	switch (attach) {
 		case BGAME_UI_ATTACH_NONE: return "none";
 		case BGAME_UI_ATTACH_PARENT: return "parent";
@@ -264,8 +263,8 @@ attach_name(bgame_ui_attach_t attach) {
 	return "?";
 }
 
-static const char*
-phase_name(bgame_ui_transition_phase_t phase) {
+const char*
+bgame_ui_transition_phase_name(bgame_ui_transition_phase_t phase) {
 	switch (phase) {
 		case BGAME_UI_TRANSITION_IDLE: return "idle";
 		case BGAME_UI_TRANSITION_ENTERING: return "entering";
@@ -275,97 +274,63 @@ phase_name(bgame_ui_transition_phase_t phase) {
 	return "?";
 }
 
-static void
-draw_node(const bgame_ui_node_t* node) {
-	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow
-		| ImGuiTreeNodeFlags_SpanFullWidth
-		| ImGuiTreeNodeFlags_DefaultOpen;
-	if (node->first_child == NULL) { flags |= ImGuiTreeNodeFlags_Leaf; }
-	if (node->id == ui_inspect_selected) { flags |= ImGuiTreeNodeFlags_Selected; }
+// }}}
 
-	// The id is the tree key, since the node itself is new every frame
-	const char* content = node->decl.content.draw != NULL
-		? (node->decl.content.debug_name != NULL ? node->decl.content.debug_name : "draw")
-		: "";
-	bool open = ImGui_TreeNodeExPtr(
-		(const void*)(uintptr_t)node->id, flags,
-		"%s #%" PRIu64 "  %s",
-		node->name != NULL ? node->name : "(anonymous)", node->index,
-		content
-	);
-	if (ImGui_IsItemHovered(0)) { ui_inspect_hovered = node->id; }
-	if (ImGui_IsItemClicked()) { ui_inspect_selected = ui_inspect_selected == node->id ? 0 : node->id; }
-
-	if (open) {
-		for (const bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
-			draw_node(child);
-		}
-		ImGui_TreePop();
-	}
-}
+// Nodes {{{
 
 static void
-draw_sizing(const char* label, const bgame_ui_sizing_t* sizing) {
-	ImGui_LabelText(label, "%s %.1f [%.0f, %.0f]", sizing_name(sizing->type), sizing->value, sizing->min, sizing->max);
+fill_node(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth, int num_descendants) {
+	*out = (bgame_ui_inspect_node_t){
+		.id = node->id,
+		.name = node->name,
+		.index = node->index,
+		.loc = node->loc,
+		.decl = &node->decl,
+		.depth = depth,
+		.num_descendants = num_descendants,
+		.first_child = num_descendants > 0 ? out + 1 : NULL,
+		.bounds = node->bounds,
+		.clip = node->clip,
+		.transition = node->transition != NULL ? &node->transition_state : NULL,
+	};
 }
 
-static void
-draw_details(const bgame_ui_node_t* node) {
-	const bgame_ui_element_t* decl = &node->decl;
-	ImGui_SeparatorText(node->name != NULL ? node->name : "(anonymous)");
-	draw_loc("Source", node->loc);
-	ImGui_LabelText("Id", "%016" PRIx64, node->id);
-	ImGui_LabelText("Bounds", "%.1f, %.1f  %.1f x %.1f", node->bounds.x, node->bounds.y, node->bounds.width, node->bounds.height);
-	ImGui_LabelText("Visible", "%.1f, %.1f  %.1f x %.1f", node->clip.x, node->clip.y, node->clip.width, node->clip.height);
-	draw_sizing("Width", &decl->layout.sizing.width);
-	draw_sizing("Height", &decl->layout.sizing.height);
-	ImGui_LabelText("Direction", "%s", decl->layout.direction == BGAME_UI_LEFT_TO_RIGHT ? "left to right" : "top to bottom");
-	ImGui_LabelText("Padding", "%.0f %.0f %.0f %.0f", decl->layout.padding.left, decl->layout.padding.right, decl->layout.padding.top, decl->layout.padding.bottom);
-	ImGui_LabelText("Child gap", "%.0f", decl->layout.child_gap);
-	ImGui_LabelText("Child align", "%s, %s", align_name(decl->layout.child_align.x), align_name(decl->layout.child_align.y));
-	if (decl->layout.aspect_ratio > 0.f) { ImGui_LabelText("Aspect ratio", "%.3f", decl->layout.aspect_ratio); }
-	if (decl->clip.horizontal || decl->clip.vertical) {
-		ImGui_LabelText("Clip", "%s%s offset %.0f, %.0f", decl->clip.horizontal ? "h" : "", decl->clip.vertical ? "v" : "", decl->clip.offset.x, decl->clip.offset.y);
+/*! The children of a node after it, pre-order; returns the number written */
+static int
+flatten(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth) {
+	int count = 0;
+	bgame_ui_inspect_node_t* prev = NULL;
+	for (const bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		bgame_ui_inspect_node_t* slot = &out[count++];
+		int num_descendants = flatten(out + count, child, depth + 1);
+		fill_node(slot, child, depth, num_descendants);
+		if (prev != NULL) { prev->next_sibling = slot; }
+		prev = slot;
+		count += num_descendants;
 	}
-	if (decl->floating.attach != BGAME_UI_ATTACH_NONE) {
-		ImGui_LabelText("Floating", "%s z %d%s", attach_name(decl->floating.attach), decl->floating.z, decl->floating.passthrough ? " passthrough" : "");
-	}
-	if (decl->content.draw != NULL) {
-		ImGui_LabelText(
-			"Content", "%s%s",
-			decl->content.debug_name != NULL ? decl->content.debug_name : "draw",
-			decl->content.measure != NULL ? ", measured" : ""
-		);
-	}
-	if (decl->focus.kind != BGAME_UI_FOCUS_NONE) {
-		ImGui_LabelText("Focus", "%s flags %x claims %x", decl->focus.kind == BGAME_UI_FOCUS_GROUP ? "group" : "target", decl->focus.flags, decl->focus.claims);
-	}
-	if (node->transition != NULL) {
-		ImGui_LabelText("Transition", "%s %.2f", phase_name(node->transition_state.phase), node->transition_state.progress);
-	}
+	return count;
 }
 
-void
-bgame_ui_inspect(void) {
-	ui_inspect_shown = true;
-	ui_inspect_hovered = 0;
-
+const bgame_ui_inspect_node_t*
+bgame_ui_inspect_tree(void) {
 	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
-	if (tree == NULL) {
-		ImGui_TextDisabled("No frame yet");
-		return;
-	}
-
-	ImGui_Text("%d elements, %d commands", tree->num_nodes, tree->num_commands);
-
-	if (ImGui_BeginChild("Tree", (ImVec2){ 0.f, 300.f }, ImGuiChildFlags_ResizeY, 0)) {
-		for (const bgame_ui_node_t* child = tree->root.first_child; child != NULL; child = child->next_sibling) {
-			draw_node(child);
-		}
-	}
-	ImGui_EndChild();
-
-	bgame_ui_id_t selected = ui_inspect_hovered != 0 ? ui_inspect_hovered : ui_inspect_selected;
-	bgame_ui_node_t* const* slot = selected != 0 ? bhamt_get(&tree->index, selected) : NULL;
-	if (slot != NULL) { draw_details(*slot); }
+	if (tree == NULL) { return NULL; }
+	bgame_ui_inspect_node_t* nodes = bgame_alloc_for_frame(
+		sizeof(bgame_ui_inspect_node_t) * (size_t)(tree->num_nodes + 1),
+		_Alignof(bgame_ui_inspect_node_t)
+	);
+	int count = flatten(nodes + 1, &tree->root, 1);
+	fill_node(nodes, &tree->root, 0, count);
+	return nodes;
 }
+
+const bgame_ui_inspect_node_t*
+bgame_ui_inspect_find(const bgame_ui_inspect_node_t* tree, bgame_ui_id_t id) {
+	if (tree == NULL || id == 0) { return NULL; }
+	for (int i = 0; i < tree->num_descendants; ++i) {
+		if (tree[1 + i].id == id) { return &tree[1 + i]; }
+	}
+	return NULL;
+}
+
+// }}}

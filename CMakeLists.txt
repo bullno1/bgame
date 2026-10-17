@@ -31,6 +31,7 @@ set(SOURCES
 	"src/ui/focus.c"
 	"src/ui/render.c"
 	"src/ui/inspect.c"
+	"src/ui/inspect_imgui.c"
 	"src/ui/tween.c"
 	"src/internal.c"
 	"src/ui/gen/overlay_shd.h"
