@@ -151,6 +151,7 @@ typedef struct {
 	bgame_ui_curve_fn_t curve;
 	bgame_ui_transform_t enter;
 	bgame_ui_transform_t exit;
+	/*! Leaving: declared on the one that leaves, inherited by every transition under it */
 	bool exiting;
 } bgame_ui_transition_t;
 
@@ -253,15 +254,19 @@ void
 bgame_ui_end(void);
 
 /**
- * What tells an element apart under the open scope
+ * What distinguishes different elements under the same scope.
  *
- * A name alone, a name with an index (an item's identity in a list, not its
- * position), or none, for an element keyed by its place among the anonymous
- * siblings of the scope.
+ * If @ref bgame_ui_key_t::id is set (i.e: non-zero), it will be used as the
+ * element's id.
+ * Otherwise, a fresh id will be generated under the current scope using
+ * @ref bgame_ui_key_t::name and @ref bgame_ui_key_t::index.
  */
 typedef struct {
 	const char* name;
 	uint64_t index;
+
+	/*! If zero, an id will be generated under the current scope */
+	bgame_ui_id_t id;
 } bgame_ui_key_t;
 
 #define BUI_KEY(NAME, INDEX) ((bgame_ui_key_t){ .name = (NAME), .index = (INDEX) })
@@ -279,8 +284,7 @@ bgame_ui__key_of_name(const char* name) {
 	return (bgame_ui_key_t){ .name = name };
 }
 
-/*! A name, a @ref BUI_KEY, or @ref BUI_GEN_ID */
-#define BUI__KEY(KEY) \
+#define BUI__KEY_OF(KEY) \
 	_Generic((KEY), bgame_ui_key_t: bgame_ui__key_of_key, default: bgame_ui__key_of_name)(KEY)
 
 /*! Begin an element under the open scope, declared at @p loc; the scope is its own from here */
@@ -298,7 +302,7 @@ bgame_ui__configure(const bgame_ui_element_t* element);
  * building it is the element's own.
  */
 #define bgame_ui_open_at(LOC, KEY, ...) \
-	(bgame_ui__begin((LOC), BUI__KEY(KEY)), bgame_ui__configure(__VA_ARGS__))
+	(bgame_ui__begin((LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(__VA_ARGS__))
 
 void
 bgame_ui_close(void);
@@ -329,14 +333,14 @@ bgame_ui__block(void);
 /*! `bgame_ui_open("Name", element)`: @ref bgame_ui_open_at from here. Spelled out, since the wrapper takes a function, not a macro. */
 #define bgame_ui_open bgame_ui__open_line(__LINE__)
 #define bgame_ui__open_line(LINE) (bgame_ui__begin((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_args
-#define bgame_ui__open_args(KEY, ...) BUI__KEY(KEY)), bgame_ui__configure(__VA_ARGS__))
+#define bgame_ui__open_args(KEY, ...) BUI__KEY_OF(KEY)), bgame_ui__configure(__VA_ARGS__))
 
 #define BUI__ELEM(...) ((bgame_ui_element_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
 
 /*! `BUI` placed at a location given to the widget by its caller, see @ref BUI_HERE */
 #define BUI_AT(LOC, KEY, ...) \
 	for ( \
-		bgame_ui__begin((LOC), BUI__KEY(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); \
+		bgame_ui__begin((LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); \
 		bgame_ui__block(); \
 		bgame_ui_close() \
 	)
@@ -346,7 +350,7 @@ bgame_ui__block(void);
 #define BUI__AT(LINE) \
 	for (bgame_ui__begin((bgame_ui_loc_t){ __FILE__, LINE }, BUI__ARGS
 #define BUI__ARGS(KEY, ...) \
-	BUI__KEY(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
+	BUI__KEY_OF(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
 
 /*! Narrow the id scope without an element, for code that emits siblings */
 void
@@ -366,9 +370,15 @@ bgame_ui_open_id(void);
 bgame_ui_id_t
 bgame_ui_scope_id(void);
 
-/*! What @ref bgame_ui_open gives this name and index under @p scope. Pure. */
+/*! What @ref bgame_ui_open gives this name and index under @p scope. */
 bgame_ui_id_t
 bgame_ui_make_id(bgame_ui_id_t scope, const char* name, uint64_t index);
+
+/**
+ * A key with its id resolved under @p scope, naming the element before it is declared.
+ */
+bgame_ui_key_t
+bgame_ui_make_key(bgame_ui_id_t scope, const char* name, uint64_t index);
 
 /*! Where an element was last frame, false if it was not there */
 bool
@@ -377,6 +387,10 @@ bgame_ui_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds);
 /*! Last frame's transition of an element, NULL if it had none */
 const bgame_ui_transition_state_t*
 bgame_ui_transition_state(bgame_ui_id_t id);
+
+/*! Whether the element's exit ran to its end last frame, so it can stop being declared */
+bool
+bgame_ui_exited(bgame_ui_id_t id);
 
 /*! The elements under the pointer last frame, outermost first */
 const bgame_ui_id_t*

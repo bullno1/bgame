@@ -133,6 +133,15 @@ bgame_ui_make_id(bgame_ui_id_t scope, const char* name, uint64_t index) {
 	return id != 0 ? id : 1;
 }
 
+bgame_ui_key_t
+bgame_ui_make_key(bgame_ui_id_t scope, const char* name, uint64_t index) {
+	return (bgame_ui_key_t){
+		.name = name,
+		.index = index,
+		.id = bgame_ui_make_id(scope, name, index),
+	};
+}
+
 bgame_ui_id_t
 bgame_ui_open_id(void) {
 	return ui_open != NULL ? ui_open->id : 0;
@@ -208,6 +217,14 @@ bgame_ui_transition_state(bgame_ui_id_t id) {
 	return &node->transition_state;
 }
 
+bool
+bgame_ui_exited(bgame_ui_id_t id) {
+	const bgame_ui_transition_state_t* state = bgame_ui_transition_state(id);
+	return state != NULL
+		&& state->phase == BGAME_UI_TRANSITION_EXITING
+		&& state->progress >= 1.f;
+}
+
 const bgame_ui_id_t*
 bgame_ui_over(int* count) {
 	if (ui_current == NULL) {
@@ -274,8 +291,11 @@ bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	barena_t* arena = bgame_frame_arena();
 
 	uint64_t index = key.index;
-	if (key.name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
-	bgame_ui_id_t id = bgame_ui_make_id(ui_scope->id, key.name, index);
+	bgame_ui_id_t id = key.id;
+	if (id == 0) {
+		if (key.name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
+		id = bgame_ui_make_id(ui_scope->id, key.name, index);
+	}
 
 	bgame_ui_node_t* node = bgame_alloc_for_frame(sizeof(bgame_ui_node_t), _Alignof(bgame_ui_node_t));
 	*node = (bgame_ui_node_t){
@@ -795,6 +815,11 @@ run_transitions(bgame_ui_tree_t* tree) {
 		if (node->hidden) { continue; }
 		const bgame_ui_transition_t* tr = &node->decl.transition;
 		bgame_ui_rect_t target = node->bounds;
+		// A subtree leaves with its ancestor, so a child's exit pose plays along
+		bool exiting = tr->exiting;
+		for (const bgame_ui_node_t* p = node->parent; p != NULL && !exiting; p = p->parent) {
+			exiting = p->decl.transition.duration > 0.f && p->decl.transition.exiting;
+		}
 
 		bgame_ui_transition_record_t* previous = NULL;
 		if (ui_previous != NULL) {
@@ -815,13 +840,16 @@ run_transitions(bgame_ui_tree_t* tree) {
 		} else {
 			*rec = *previous;
 			rec->elapsed += dt;
-			if (tr->exiting && !previous->exiting) {
+			// A reversal mid-phase picks up where the other phase was, so mirrored poses meet
+			float done = tr->duration > 0.f ? BMIN(previous->elapsed / tr->duration, 1.f) : 1.f;
+			if (exiting && !previous->exiting) {
 				rec->phase = BGAME_UI_TRANSITION_EXITING;
-				rec->elapsed = 0.f;
+				rec->elapsed = previous->phase == BGAME_UI_TRANSITION_ENTERING ? tr->duration * (1.f - done) : 0.f;
 				rec->initial = previous->displayed;
-			} else if (!tr->exiting && previous->phase == BGAME_UI_TRANSITION_EXITING) {
-				rec->phase = BGAME_UI_TRANSITION_IDLE;
-				rec->elapsed = 0.f;
+			} else if (!exiting && previous->phase == BGAME_UI_TRANSITION_EXITING) {
+				rec->phase = done < 1.f ? BGAME_UI_TRANSITION_ENTERING : BGAME_UI_TRANSITION_IDLE;
+				rec->elapsed = tr->duration * (1.f - done);
+				rec->initial = previous->displayed;
 			}
 			if (!rect_equal(target, previous->target)) {
 				rec->initial = previous->displayed;
@@ -832,7 +860,7 @@ run_transitions(bgame_ui_tree_t* tree) {
 			}
 			rec->target = target;
 		}
-		rec->exiting = tr->exiting;
+		rec->exiting = exiting;
 
 		float progress = tr->duration > 0.f ? BMIN(rec->elapsed / tr->duration, 1.f) : 1.f;
 		bgame_ui_curve_fn_t curve = tr->curve != NULL ? tr->curve : cf_smoothstep;
