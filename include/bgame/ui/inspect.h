@@ -8,24 +8,29 @@ typedef enum {
 	BGAME_UI_PICK_LOCK_ON_CLICK = 1 << 0,
 	/*! Stop at the next right press, with the selection from before the pick */
 	BGAME_UI_PICK_CANCEL_ON_ALT = 1 << 1,
-	/*! Skip anonymous elements: the innermost named one under the pointer */
+	/*! Skip anonymous elements */
 	BGAME_UI_PICK_NAMED         = 1 << 2,
-	/*! Let the UI see the pointer meanwhile. Hidden by default, so the press that locks a pick does not activate what it lands on. */
+	/*! Let the UI see the pointer while picking. */
 	BGAME_UI_PICK_PASS_POINTER  = 1 << 3,
 	/**
 	 * On lock, open the picked element's declaration with the editor command
 	 *
-	 * The command is the `BGAME_EDITOR` environment variable, split on whitespace with
-	 * double quotes grouping, `{file}` and `{line}` replaced, run without a shell:
+	 * The command is built from the `BGAME_EDITOR` environment variable, processed
+	 * as follow:
 	 *
-	 *   vim:    `vim --servername GAME --remote-send "<C-\><C-N>:drop {file} | {line}<CR>"`
-	 *           for a vim started with `--servername GAME`
-	 *   nvim:   `nvim --server /tmp/nvim.sock --remote-send "<C-\><C-N>:drop {file} | {line}<CR>"`
-	 *           for an nvim started with `--listen /tmp/nvim.sock`
-	 *   vscode: `code --goto {file}:{line}`
+	 * * The string is split by white space into separate arguments
+	 * * Double quotes group tokens into a single argument
+	 * * `{file}` and `{line}` are substituted with the actual source location
 	 *
-	 * `--remote-send` only posts keys: with no server it fails instead of starting a
-	 * headless editor, and `:drop` reuses a window showing the file.
+	 * It is then executed without a shell.
+	 * Example templates for popular editors:
+	 *
+	 *   * vim: `vim --servername GAME --remote-silent "+{line}|set cursorline|normal! $" {file}`
+	 *     for a vim instance started with `--servername GAME`
+	 *   * nvim: `nvim --server /tmp/nvim.sock --remote-send "<C-\><C-N>:silent drop {file} | {line}<CR>"`
+	 *     for a nvim instance started with `--listen /tmp/nvim.sock`
+	 *   * emacs: `emacsclient -n +{line} {file}`
+	 *   * vscode: `code --goto {file}:{line}`
 	 */
 	BGAME_UI_PICK_EDIT          = 1 << 4,
 } bgame_ui_pick_flag_t;
