@@ -10,7 +10,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <bresmon.h>
+#include <stdlib.h>
 #include <cute_app.h>
+#include <cute_alloc.h>
 #include <SDL3/SDL_init.h>
 #include "loader_interface.h"
 #define BRESMON_IMPLEMENTATION
@@ -35,6 +37,41 @@ reload_module(const char* path, void* module) {
 	(void)path;
 	remodule_reload(module);
 }
+
+// CF's static destructors run at exit, after the module and its allocator are gone.
+// Whatever they still hold is leaked to the OS instead.
+static void*
+post_exit_alloc(size_t size, void* udata) {
+	(void)udata;
+	return malloc(size);
+}
+
+static void
+post_exit_free(void* ptr, void* udata) {
+	(void)ptr;
+	(void)udata;
+}
+
+static void*
+post_exit_calloc(size_t size, size_t count, void* udata) {
+	(void)udata;
+	return calloc(size, count);
+}
+
+static void*
+post_exit_realloc(void* ptr, size_t size, void* udata) {
+	(void)ptr;
+	(void)udata;
+	// Nothing grows a block after the app is destroyed
+	return malloc(size);
+}
+
+static const CF_Allocator post_exit_allocator = {
+	.alloc_fn = post_exit_alloc,
+	.free_fn = post_exit_free,
+	.calloc_fn = post_exit_calloc,
+	.realloc_fn = post_exit_realloc,
+};
 
 static bool
 is_reload_blocked(bgame_loader_interface_t* loader_interface) {
@@ -122,6 +159,7 @@ SDL_AppQuit(void* appstate, SDL_AppResult result) {
 
 	bresmon_destroy(bgame_loader.monitor);
 	remodule_unload(bgame_loader.module);
+	cf_allocator_override(post_exit_allocator);
 }
 
 #endif

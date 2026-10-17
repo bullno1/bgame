@@ -11,7 +11,7 @@
 typedef struct focus_node_s focus_node_t;
 
 struct focus_node_s {
-	uint32_t id;
+	bgame_ui_id_t id;
 	uint32_t flags;
 	uint32_t claims;
 	bool is_group;
@@ -25,14 +25,14 @@ struct focus_node_s {
 	focus_node_t* prev_sibling;
 
 	// Carried over from the last build by id
-	uint32_t remembered;
-	uint32_t restore;
+	bgame_ui_id_t remembered;
+	bgame_ui_id_t restore;
 };
 
 typedef struct {
 	focus_node_t root;
 	int num_nodes;
-	BHAMT_TABLE(uint32_t, focus_node_t*) index;
+	BHAMT_TABLE(bgame_ui_id_t, focus_node_t*) index;
 } focus_tree_t;
 
 typedef struct {
@@ -40,14 +40,14 @@ typedef struct {
 	focus_tree_t* current;
 	focus_node_t* open;
 
-	uint32_t focused;
-	uint32_t focused_before;
-	uint32_t autofocus;
-	uint32_t routed[32];
+	bgame_ui_id_t focused;
+	bgame_ui_id_t focused_before;
+	bgame_ui_id_t autofocus;
+	bgame_ui_id_t routed[32];
 	bgame_ui_rect_t focused_bounds;
 
-	uint32_t hovered;
-	uint32_t captured;
+	bgame_ui_id_t hovered;
+	bgame_ui_id_t captured;
 	bool pointer_down;
 	bool pointer_active;
 	bgame_ui_pointer_policy_t policy;
@@ -61,7 +61,7 @@ BGAME_VAR(focus_state_t, bgame_ui_focus_state) = { 0 };
 // Tree {{{
 
 static focus_node_t*
-find_node(focus_tree_t* tree, uint32_t id) {
+find_node(focus_tree_t* tree, bgame_ui_id_t id) {
 	if (tree == NULL || id == 0) { return NULL; }
 	focus_node_t** slot = bhamt_get(&tree->index, id);
 	return slot != NULL ? *slot : NULL;
@@ -354,7 +354,7 @@ bgame_ui_focus_begin(const bgame_ui_pointer_t* pointer) {
 	state->pointer_active = pointer->moved || pointer->pressed || pointer->released;
 	if (state->pointer_active) { state->mode = BGAME_UI_INPUT_POINTER; }
 
-	uint32_t under = 0;
+	bgame_ui_id_t under = 0;
 	focus_tree_t* tree = state->previous;
 	if (tree != NULL) {
 		focus_node_t* focused = find_node(tree, state->focused);
@@ -425,8 +425,8 @@ bgame_ui_focus_end(void) {
 
 // Declaring {{{
 
-static void
-open_node(const bgame_ui_focus_desc_t* desc, bool is_group) {
+void
+bgame_ui_focus_open(bgame_ui_id_t id, const bgame_ui_focus_t* focus) {
 	focus_state_t* state = &bgame_ui_focus_state;
 	focus_tree_t* tree = state->current;
 	if (tree == NULL || state->open == NULL) {
@@ -436,12 +436,10 @@ open_node(const bgame_ui_focus_desc_t* desc, bool is_group) {
 
 	focus_node_t* node = bgame_alloc_for_frame(sizeof(focus_node_t), _Alignof(focus_node_t));
 	*node = (focus_node_t){
-		.id = desc->id != 0 ? desc->id : bgame_ui_open_element_id(),
-		.flags = desc->flags,
-		.claims = desc->claims,
-		.is_group = is_group,
-		.has_bounds = desc->bounds.width > 0.f || desc->bounds.height > 0.f,
-		.bounds = desc->bounds,
+		.id = id,
+		.flags = focus->flags,
+		.claims = focus->claims,
+		.is_group = focus->kind == BGAME_UI_FOCUS_GROUP,
 		.parent = state->open,
 		.prev_sibling = state->open->last_child,
 	};
@@ -469,16 +467,6 @@ open_node(const bgame_ui_focus_desc_t* desc, bool is_group) {
 	}
 
 	state->open = node;
-}
-
-void
-bgame_ui_focus_open_target(const bgame_ui_focus_desc_t* desc) {
-	open_node(desc, false);
-}
-
-void
-bgame_ui_focus_open_group(const bgame_ui_focus_desc_t* desc) {
-	open_node(desc, true);
 }
 
 void
@@ -633,11 +621,11 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
 }
 
 void
-bgame_ui_focus_set(uint32_t id) {
+bgame_ui_focus_set(bgame_ui_id_t id) {
 	bgame_ui_focus_state.focused = id;
 }
 
-uint32_t
+bgame_ui_id_t
 bgame_ui_focus_id(void) {
 	return bgame_ui_focus_state.focused;
 }
@@ -647,7 +635,7 @@ bgame_ui_focus_bounds(void) {
 	return bgame_ui_focus_state.focused_bounds;
 }
 
-uint32_t
+bgame_ui_id_t
 bgame_ui_hovered(void) {
 	return bgame_ui_focus_state.hovered;
 }

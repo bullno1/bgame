@@ -3,22 +3,23 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../scope.h"
+#include "../ui.h"
 
 /**
  * Keyboard and joypad focus for the UI.
  *
- * A focus tree is declared alongside the layout, one node per element that
- * takes part in navigation.
+ * An element takes part in navigation through its `focus` field.
  *
- * A target is where focus can land on.
+ * A target is where focus can land.
  *
- * A group scopes its children: it remembers which of them was focused last and
- * bounds wrapping and trapping. The tree is rebuilt every frame. Focus and
- * action routing uses the tree built in the previous frame.
+ * A group scopes its children, remembers which of them was focused last and bounds
+ * wrapping and trapping.
+ *
+ * The tree is rebuilt every frame. Focus and action routing use the tree built
+ * in the previous frame.
  *
  * Input is handled by the game: an action is a bit the game defines, routed from
- * the focused node up through its ancestors to the first that claims it.
+ * the focused element up through its ancestors to the first that claims it.
  */
 
 /*! How to move the focus with @ref bgame_ui_focus_move */
@@ -41,7 +42,7 @@ typedef enum {
 	BGAME_UI_FOCUS_LEAVE,
 } bgame_ui_focus_dir_t;
 
-/*! Bits for @ref bgame_ui_focus_desc_t::flags */
+/*! Bits for @ref bgame_ui_focus_t::flags */
 typedef enum {
 	/*! This element is only declared for the layout, skipped by navigation */
 	BGAME_UI_FOCUS_DISABLED  = 1 << 0,
@@ -58,26 +59,6 @@ typedef enum {
 	/*! Up and down wrap around inside this group */
 	BGAME_UI_FOCUS_WRAP_V    = 1 << 6,
 } bgame_ui_focus_flag_t;
-
-/*! A box in UI space: top-left origin, y down */
-typedef struct {
-	float x;
-	float y;
-	float width;
-	float height;
-} bgame_ui_rect_t;
-
-/*! A focus node */
-typedef struct {
-	/*! 0 for the open layout element */
-	uint32_t id;
-	/*! @ref bgame_ui_focus_flag_t bits */
-	uint32_t flags;
-	/*! Action bits this node takes, see @ref bgame_ui_focus_route */
-	uint32_t claims;
-	/*! Zero for the layout element's box, or a group's children */
-	bgame_ui_rect_t bounds;
-} bgame_ui_focus_desc_t;
 
 /*! How the pointer moves the focus */
 typedef enum {
@@ -97,59 +78,31 @@ typedef enum {
 	BGAME_UI_INPUT_POINTER,
 } bgame_ui_input_mode_t;
 
-// Declaring the tree
+// Querying inside an element, during the build
 
-void
-bgame_ui_focus_open_target(const bgame_ui_focus_desc_t* desc);
-
-void
-bgame_ui_focus_open_group(const bgame_ui_focus_desc_t* desc);
-
-void
-bgame_ui_focus_close(void);
-
-#define BUI__FOCUS_DESC(...) \
-	((bgame_ui_focus_desc_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
-
-/*! A target, described as `BUI_FOCUS({ .claims = ... })`; the block is its children */
-#define BUI_FOCUS(...) \
-	BGAME_SCOPE( \
-		bgame_ui_focus_open_target(BUI__FOCUS_DESC(__VA_ARGS__)), \
-		bgame_ui_focus_close() \
-	)
-
-/*! A group, described the same way; the block is its children */
-#define BUI_FOCUS_GROUP(...) \
-	BGAME_SCOPE( \
-		bgame_ui_focus_open_group(BUI__FOCUS_DESC(__VA_ARGS__)), \
-		bgame_ui_focus_close() \
-	)
-
-// Asking inside a node, during the build
-
-/*! Whether the open node is focused */
+/*! Whether the innermost open focus element is focused */
 bool
 bgame_ui_focused(void);
 
-/*! Whether the open node became focused since the last build */
+/*! Whether the element became focused since the last build */
 bool
 bgame_ui_focus_gained(void);
 
-/*! Whether the open node stopped being focused since the last build */
+/*! Whether the element stopped being focused since the last build */
 bool
 bgame_ui_focus_lost(void);
 
-/*! Whether the focus is on the open node or inside it */
+/*! Whether the focus is on the element or inside it */
 bool
 bgame_ui_focus_within(void);
 
-/*! Whether the open node was handed any of these actions this frame */
+/*! Whether the element was handed any of these actions this frame */
 bool
 bgame_ui_focus_action(uint32_t actions);
 
-// Feeding input, before the nodes
+// Feeding input, before the elements
 
-/*! Hand actions to the first claimant from the focused node up; false for none */
+/*! Hand actions to the first claimant from the focused element up; false for none */
 bool
 bgame_ui_focus_route(uint32_t actions);
 
@@ -157,20 +110,20 @@ bgame_ui_focus_route(uint32_t actions);
 bool
 bgame_ui_focus_move(bgame_ui_focus_dir_t dir);
 
-/*! Focus a node by id, 0 for none */
+/*! Focus an element by id, 0 for none */
 void
-bgame_ui_focus_set(uint32_t id);
+bgame_ui_focus_set(bgame_ui_id_t id);
 
-/*! The focused node, 0 for none */
-uint32_t
+/*! The focused element, 0 for none */
+bgame_ui_id_t
 bgame_ui_focus_id(void);
 
-/*! The box of the focused node, zero for none */
+/*! The box of the focused element, zero for none */
 bgame_ui_rect_t
 bgame_ui_focus_bounds(void);
 
 /*! The target under the pointer, or captured by a press on it, 0 for none */
-uint32_t
+bgame_ui_id_t
 bgame_ui_hovered(void);
 
 void

@@ -1,57 +1,61 @@
-#include "internal.h"
 #include "ui/internal.h"
-#include <bgame/ui.h>
 #include <bgame/reloadable.h>
-#include <bgame/allocator.h>
 #include <bgame/allocator/frame.h>
+#include <bgame/chibihash64.h>
+#include <bgame/chibihash64-stream.h>
 #include <bfmt_log.h>
 #include <bfmt_cldr.h>
-#include <bhamt.h>
-#include <bgame/shader.h>
-#include <blog.h>
 #include <bminmax.h>
 #include <cute_app.h>
 #include <cute_input.h>
 #include <cute_time.h>
-#include <cute_draw.h>
-#include <cute_math.h>
-#include "ui/gen/overlay_shd.h"
-#include <bgame/chibihash64.h>
-#include <bgame/chibihash64-stream.h>
+#include <dcimgui.h>
+#include <float.h>
+#include <math.h>
+#include <string.h>
 
-typedef struct {
-	uint16_t capacity;
-	const char* font_names[];
-} bgame_ui_font_list_t;
+#define AXIS_X 0
+#define AXIS_Y 1
+#define EPSILON 0.001f
 
-typedef struct {
-	void* userdata;
-	void (*render)(const Clay_RenderCommand* command, void* userdata);
-} bgame_custom_ui_element_t;
+typedef struct ui_scope_s ui_scope_t;
+
+struct ui_scope_s {
+	bgame_ui_id_t id;
+	/*! NULL for a pushed id */
+	bgame_ui_node_t* node;
+	ui_scope_t* parent;
+	int num_anonymous;
+};
 
 typedef struct {
 	const void* tag;
-	uint32_t id;
-} bgame_ui_state_key_t;
+	bgame_ui_id_t id;
+} ui_state_key_t;
 
 typedef struct {
 	bgame_ui__ctx_link_t* current;
 	bgame_ui__ctx_link_t* pool;
 	bgame_ui__ctx_link_t* empty;  // What a peek of an empty stack sees
-} bgame_ui_ctx_stack_t;
+} ui_ctx_stack_t;
 
-typedef BHAMT_TABLE(bgame_ui_state_key_t, void*) bgame_ui_state_table_t;
-typedef BHAMT_TABLE(const void*, bgame_ui_ctx_stack_t) bgame_ui_ctx_stacks_t;
+typedef BHAMT_TABLE(ui_state_key_t, void*) ui_state_table_t;
+typedef BHAMT_TABLE(const void*, ui_ctx_stack_t) ui_ctx_stacks_t;
 
-BGAME_VAR(void*, bgame_ui_mem) = NULL;
-BGAME_VAR(bgame_ui_font_list_t*, bgame_ui_fonts) = NULL;
-BGAME_VAR(bool, bgame_ui_debugger_enabled) = false;
-BGAME_VAR(CF_Shader, bgame_ui_overlay_shader) = { 0 };
-BGAME_VAR(bgame_translation_t*, bgame_ui_current_translation) = NULL;
-BGAME_VAR(bgame_ui_state_table_t, bgame_ui_previous_states) = { 0 };
-BGAME_VAR(bgame_ui_state_table_t, bgame_ui_current_states) = { 0 };
-// Plain static on purpose: rebuilt in frame memory by every bgame_ui_begin
-static bgame_ui_ctx_stacks_t bgame_ui_ctx_stacks = { 0 };
+// Trees live in the frame arena, which outlives a reload; a change to the node struct
+// needs a restart, like a component size.
+BGAME_VAR(bgame_ui_tree_t*, ui_previous) = NULL;
+BGAME_VAR(bgame_ui_tree_t*, ui_current) = NULL;
+BGAME_VAR(bgame_translation_t*, ui_translation) = NULL;
+BGAME_VAR(ui_state_table_t, ui_previous_states) = { 0 };
+BGAME_VAR(ui_state_table_t, ui_current_states) = { 0 };
+// Plain statics on purpose: rebuilt by every bgame_ui_begin
+static ui_ctx_stacks_t ui_ctx_stacks = { 0 };
+static ui_scope_t ui_root_scope = { 0 };
+static ui_scope_t* ui_scope = NULL;
+static bgame_ui_node_t* ui_open = NULL;
+static bool ui_block_pending = false;
+static bool ui_duplicate_reported = false;
 
 // Plain static on purpose: a reload zeroes it, so its callbacks are never stale
 static struct {
@@ -59,67 +63,958 @@ static struct {
 	bgame_translation_t* translation;
 	int version;
 	bfmt_locale_t locale;
-} bgame_ui_locale_cache = { 0 };
+} ui_locale_cache = { 0 };
 
-static void
-bgame_ui_error(Clay_ErrorData error) {
-	static int last_error = 0;
+// Geometry {{{
 
-	if (error.errorType == last_error) { return; }
-
-	BLOG_ERROR("%.*s", error.errorText.length, error.errorText.chars);
-	last_error = error.errorType;
+static bool
+rect_empty(bgame_ui_rect_t rect) {
+	return rect.width <= 0.f || rect.height <= 0.f;
 }
 
-const char*
-bgame_get_ui_font_name(uint16_t id) {
-	if (bgame_ui_fonts == NULL) { return "Calibri"; }
-	if (id >= bgame_ui_fonts->capacity) { return "Calibri"; }
-
-	return bgame_ui_fonts->font_names[id];
+static bgame_ui_rect_t
+rect_intersect(bgame_ui_rect_t a, bgame_ui_rect_t b) {
+	float x0 = BMAX(a.x, b.x);
+	float y0 = BMAX(a.y, b.y);
+	float x1 = BMIN(a.x + a.width, b.x + b.width);
+	float y1 = BMIN(a.y + a.height, b.y + b.height);
+	return (bgame_ui_rect_t){ x0, y0, BMAX(x1 - x0, 0.f), BMAX(y1 - y0, 0.f) };
 }
 
-static void
-bgame_ui_begin_text(const Clay_TextElementConfig* config) {
-	const char* font_name = bgame_get_ui_font_name(config->fontId);
-	cf_push_font(font_name);
-	cf_push_font_size(config->fontSize);
-	cf_draw_push_color(bgame_ui_color_from_clay(config->textColor));
+static bool
+rect_contains(bgame_ui_rect_t rect, CF_V2 p) {
+	return rect.x <= p.x && p.x < rect.x + rect.width
+		&& rect.y <= p.y && p.y < rect.y + rect.height;
+}
 
-	bgame_ui_text_config_t extra_config = { 0 };
-	if (config->userData != NULL) {
-		extra_config = *(bgame_ui_text_config_t*)config->userData;
+static bool
+rect_equal(bgame_ui_rect_t a, bgame_ui_rect_t b) {
+	return fabsf(a.x - b.x) < EPSILON
+		&& fabsf(a.y - b.y) < EPSILON
+		&& fabsf(a.width - b.width) < EPSILON
+		&& fabsf(a.height - b.height) < EPSILON;
+}
+
+static bgame_ui_rect_t
+rect_lerp(bgame_ui_rect_t a, bgame_ui_rect_t b, float t) {
+	return (bgame_ui_rect_t){
+		cf_lerp(a.x, b.x, t),
+		cf_lerp(a.y, b.y, t),
+		cf_lerp(a.width, b.width, t),
+		cf_lerp(a.height, b.height, t),
+	};
+}
+
+static float
+align_offset(bgame_ui_align_t align, float slack) {
+	switch (align) {
+		case BGAME_UI_ALIGN_START: return 0.f;
+		case BGAME_UI_ALIGN_CENTER: return slack * 0.5f;
+		case BGAME_UI_ALIGN_END: return slack;
 	}
-	cf_push_text_effect_active(extra_config.effect == BGAME_UI_ENABLE_TEXT_EFFECT);
-	cf_push_font_blur(extra_config.blur);
+	return 0.f;
+}
+
+// }}}
+
+// Ids {{{
+
+bgame_ui_id_t
+bgame_ui_make_id(bgame_ui_id_t scope, const char* name, uint64_t index) {
+	ChibiHash64Ctx ctx = chibihash64_init(0);
+	uint8_t named = name != NULL;
+	chibihash64_append(&ctx, &scope, sizeof(scope));
+	chibihash64_append(&ctx, &named, sizeof(named));
+	if (name != NULL) { chibihash64_append(&ctx, name, strlen(name)); }
+	chibihash64_append(&ctx, &index, sizeof(index));
+	uint64_t id = chibihash64_finish(&ctx);
+	return id != 0 ? id : 1;
+}
+
+bgame_ui_id_t
+bgame_ui_open_id(void) {
+	return ui_open != NULL ? ui_open->id : 0;
+}
+
+bgame_ui_id_t
+bgame_ui_scope_id(void) {
+	return ui_scope != NULL ? ui_scope->id : 0;
+}
+
+static ui_scope_t*
+push_scope(bgame_ui_id_t id, bgame_ui_node_t* node) {
+	ui_scope_t* scope = bgame_alloc_for_frame(sizeof(ui_scope_t), _Alignof(ui_scope_t));
+	*scope = (ui_scope_t){ .id = id, .node = node, .parent = ui_scope };
+	ui_scope = scope;
+	return scope;
+}
+
+void
+bgame_ui_push_id(const char* name, uint64_t index) {
+	if (ui_scope == NULL) {
+		BFMT_ERROR("Id pushed outside of a UI frame");
+		return;
+	}
+	push_scope(bgame_ui_make_id(ui_scope->id, name, index), NULL);
+}
+
+void
+bgame_ui_pop_id(void) {
+	if (ui_scope == NULL || ui_scope->node != NULL) {
+		BFMT_ERROR("Id popped without one pushed");
+		return;
+	}
+	ui_scope = ui_scope->parent;
+}
+
+// }}}
+
+// Lookups {{{
+
+static bgame_ui_node_t*
+find_node(const bgame_ui_tree_t* tree, bgame_ui_id_t id) {
+	if (tree == NULL || id == 0) { return NULL; }
+	bgame_ui_node_t* const* slot = bhamt_get(&tree->index, id);
+	return slot != NULL ? *slot : NULL;
+}
+
+const bgame_ui_tree_t*
+bgame_ui_previous_tree(void) {
+	return ui_previous;
+}
+
+bool
+bgame_ui_element_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds) {
+	bgame_ui_node_t* node = find_node(ui_current, id);
+	if (node == NULL || node->hidden) { return false; }
+	*bounds = node->bounds;
+	return true;
+}
+
+bool
+bgame_ui_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds) {
+	bgame_ui_node_t* node = find_node(ui_previous, id);
+	if (node == NULL || node->hidden) { return false; }
+	*bounds = node->bounds;
+	return true;
+}
+
+const bgame_ui_transition_state_t*
+bgame_ui_transition_state(bgame_ui_id_t id) {
+	bgame_ui_node_t* node = find_node(ui_previous, id);
+	if (node == NULL || node->transition == NULL) { return NULL; }
+	return &node->transition_state;
+}
+
+const bgame_ui_id_t*
+bgame_ui_over(int* count) {
+	if (ui_current == NULL) {
+		*count = 0;
+		return NULL;
+	}
+	*count = ui_current->num_over;
+	return ui_current->over;
+}
+
+const bgame_ui_command_t*
+bgame_ui_commands(int* count) {
+	// The frame just ended is the one to draw
+	bgame_ui_tree_t* tree = ui_scope == NULL ? ui_current : ui_previous;
+	if (tree == NULL) {
+		*count = 0;
+		return NULL;
+	}
+	*count = tree->num_commands;
+	return tree->commands;
+}
+
+// }}}
+
+// Building {{{
+
+static bool
+node_in_flow(const bgame_ui_node_t* node) {
+	return node->decl.floating.attach == BGAME_UI_ATTACH_NONE;
+}
+
+static bool
+node_clips(const bgame_ui_node_t* node) {
+	return node->decl.clip.horizontal || node->decl.clip.vertical;
+}
+
+bgame_ui_id_t
+bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element) {
+	if (ui_scope == NULL) {
+		BFMT_ERROR("Element opened outside of a UI frame");
+		return 0;
+	}
+	bgame_ui_tree_t* tree = ui_current;
+	barena_t* arena = bgame_frame_arena();
+
+	uint64_t index = element->index;
+	if (element->name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
+	bgame_ui_id_t id = bgame_ui_make_id(ui_scope->id, element->name, index);
+
+	bgame_ui_node_t* node = bgame_alloc_for_frame(sizeof(bgame_ui_node_t), _Alignof(bgame_ui_node_t));
+	*node = (bgame_ui_node_t){
+		.id = id,
+		.index = index,
+		.loc = loc,
+		.decl = *element,
+		.parent = ui_open,
+		.prev_sibling = ui_open->last_child,
+		.depth = ui_open->depth + 1,
+	};
+	if (element->name != NULL) {
+		size_t len = strlen(element->name);
+		char* copy = bgame_alloc_for_frame(len + 1, _Alignof(char));
+		memcpy(copy, element->name, len + 1);
+		node->name = copy;
+	}
+
+	if (ui_open->last_child != NULL) {
+		ui_open->last_child->next_sibling = node;
+	} else {
+		ui_open->first_child = node;
+	}
+	ui_open->last_child = node;
+	++tree->num_nodes;
+
+	if (!node_in_flow(node)) {
+		if (tree->last_floating != NULL) {
+			tree->last_floating->next_floating = node;
+		} else {
+			tree->first_floating = node;
+		}
+		tree->last_floating = node;
+		++tree->num_floating;
+	}
+	if (element->transition.duration > 0.f) {
+		node->next_transition = tree->first_transition;
+		tree->first_transition = node;
+		++tree->num_transition;
+	}
+	if (element->content.draw != NULL) { ++tree->num_content; }
+	if (node_clips(node)) { ++tree->num_clip; }
+
+	bool is_new;
+	bgame_ui_node_t** slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
+	if (is_new) {
+		*slot = node;
+	} else if (!ui_duplicate_reported) {
+		BFMT_ERROR(
+			"Duplicate UI element ", element->name != NULL ? element->name : "(anonymous)",
+			" #", index
+		);
+		ui_duplicate_reported = true;
+	}
+
+	if (element->focus.kind != BGAME_UI_FOCUS_NONE) {
+		bgame_ui_focus_open(id, &element->focus);
+	}
+
+	push_scope(id, node);
+	ui_open = node;
+	ui_block_pending = true;
+	return id;
+}
+
+bool
+bgame_ui__block(void) {
+	bool pending = ui_block_pending;
+	ui_block_pending = false;
+	return pending;
+}
+
+void
+bgame_ui_close(void) {
+	if (ui_scope == NULL) {
+		BFMT_ERROR("Element closed outside of a UI frame");
+		return;
+	}
+	if (ui_scope->node == NULL) {
+		BFMT_ERROR("Element closed with an id still pushed");
+		return;
+	}
+	if (ui_open == NULL || ui_open->parent == NULL) {
+		BFMT_ERROR("Element closed without one open");
+		return;
+	}
+
+	bgame_ui_node_t* node = ui_open;
+	if (node->decl.focus.kind != BGAME_UI_FOCUS_NONE) {
+		bgame_ui_focus_close();
+	}
+	ui_open = node->parent;
+	ui_scope = ui_scope->parent;
+	ui_block_pending = false;
+}
+
+// }}}
+
+// Layout {{{
+
+static const bgame_ui_sizing_t*
+node_sizing(const bgame_ui_node_t* node, int axis) {
+	return axis == AXIS_X ? &node->decl.layout.sizing.width : &node->decl.layout.sizing.height;
+}
+
+static float
+node_padding_start(const bgame_ui_node_t* node, int axis) {
+	return axis == AXIS_X ? node->decl.layout.padding.left : node->decl.layout.padding.top;
+}
+
+static float
+node_padding_sum(const bgame_ui_node_t* node, int axis) {
+	const bgame_ui_padding_t* p = &node->decl.layout.padding;
+	return axis == AXIS_X ? p->left + p->right : p->top + p->bottom;
+}
+
+static int
+node_main_axis(const bgame_ui_node_t* node) {
+	return node->decl.layout.direction == BGAME_UI_LEFT_TO_RIGHT ? AXIS_X : AXIS_Y;
+}
+
+static float
+clamp_size(float size, const bgame_ui_sizing_t* sizing) {
+	if (sizing->min > 0.f && size < sizing->min) { size = sizing->min; }
+	if (sizing->max > 0.f && size > sizing->max) { size = sizing->max; }
+	return BMAX(size, 0.f);
+}
+
+/*! What the children take along an axis: the sum with gaps along the direction, the largest across */
+static float
+children_extent(const bgame_ui_node_t* node, int axis, bool use_min) {
+	bool along = node_main_axis(node) == axis;
+	float total = 0.f;
+	int count = 0;
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (!node_in_flow(child)) { continue; }
+		float size = use_min ? child->min_size[axis] : child->size[axis];
+		if (along) {
+			total += size;
+			++count;
+		} else {
+			total = BMAX(total, size);
+		}
+	}
+	if (along && count > 1) { total += node->decl.layout.child_gap * (float)(count - 1); }
+	return total;
+}
+
+/*! Bottom up: what each element needs at least, as far as it can be known without the parent */
+static void
+compute_node_min(bgame_ui_node_t* node, int axis) {
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { compute_node_min(child, axis); }
+	}
+
+	const bgame_ui_sizing_t* sizing = node_sizing(node, axis);
+	float fit = children_extent(node, axis, true);
+	if (node->decl.content.measure != NULL) {
+		if (axis == AXIS_X) {
+			// Content drives the width only when asked to; a growing width wraps it instead
+			if (sizing->type == BGAME_UI_SIZING_FIT) {
+				node->content_size = node->decl.content.measure(FLT_MAX, node->decl.content.userdata);
+				fit = BMAX(fit, node->content_size.width);
+			}
+		} else {
+			fit = BMAX(fit, node->content_size.height);
+		}
+	}
+	fit += node_padding_sum(node, axis);
+
+	switch (sizing->type) {
+		case BGAME_UI_SIZING_FIXED:
+			node->min_size[axis] = BMAX(sizing->value, 0.f);
+			break;
+		case BGAME_UI_SIZING_PERCENT:
+			node->min_size[axis] = 0.f;
+			break;
+		case BGAME_UI_SIZING_FIT:
+		case BGAME_UI_SIZING_GROW:
+			node->min_size[axis] = clamp_size(fit, sizing);
+			break;
+	}
+}
+
+/*! The size a child starts from inside a parent of this inner size */
+static float
+child_base_size(const bgame_ui_node_t* child, int axis, float inner, bool along) {
+	const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
+	switch (sizing->type) {
+		case BGAME_UI_SIZING_FIXED: return BMAX(sizing->value, 0.f);
+		case BGAME_UI_SIZING_FIT: return child->min_size[axis];
+		case BGAME_UI_SIZING_PERCENT: return clamp_size(sizing->value * inner, sizing);
+		case BGAME_UI_SIZING_GROW: return along ? child->min_size[axis] : clamp_size(inner, sizing);
+	}
+	return 0.f;
+}
+
+static bool
+child_grows(const bgame_ui_node_t* child, int axis) {
+	return node_in_flow(child) && node_sizing(child, axis)->type == BGAME_UI_SIZING_GROW;
+}
+
+/*! Hand the slack to the growing children, the smallest first so they even out */
+static void
+distribute_child_slack(bgame_ui_node_t* node, int axis, float remaining) {
+	while (remaining > EPSILON) {
+		float smallest = FLT_MAX;
+		float second = FLT_MAX;
+		int count = 0;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!child_grows(child, axis)) { continue; }
+			const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
+			float size = child->size[axis];
+			if (sizing->max > 0.f && size >= sizing->max - EPSILON) { continue; }
+			if (size < smallest - EPSILON) {
+				second = smallest;
+				smallest = size;
+				count = 1;
+			} else if (size < smallest + EPSILON) {
+				++count;
+			} else if (size < second) {
+				second = size;
+			}
+		}
+		if (count == 0) { break; }
+
+		float step = BMIN(second - smallest, remaining / (float)count);
+		float given = 0.f;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!child_grows(child, axis)) { continue; }
+			if (fabsf(child->size[axis] - smallest) > EPSILON) { continue; }
+			const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
+			float add = step;
+			if (sizing->max > 0.f) { add = BMIN(add, sizing->max - child->size[axis]); }
+			child->size[axis] += add;
+			given += add;
+		}
+		remaining -= given;
+		if (given <= EPSILON) { break; }
+	}
+}
+
+/*! Take the overflow from the growing children, the largest first, down to their min */
+static void
+absorb_child_overflow(bgame_ui_node_t* node, int axis, float overflow) {
+	while (overflow > EPSILON) {
+		float largest = -FLT_MAX;
+		float second = -FLT_MAX;
+		int count = 0;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!child_grows(child, axis)) { continue; }
+			float size = child->size[axis];
+			if (size <= node_sizing(child, axis)->min + EPSILON) { continue; }
+			if (size > largest + EPSILON) {
+				second = largest;
+				largest = size;
+				count = 1;
+			} else if (size > largest - EPSILON) {
+				++count;
+			} else if (size > second) {
+				second = size;
+			}
+		}
+		if (count == 0) { break; }
+
+		float step = BMIN(largest - BMAX(second, 0.f), overflow / (float)count);
+		float taken = 0.f;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!child_grows(child, axis)) { continue; }
+			if (fabsf(child->size[axis] - largest) > EPSILON) { continue; }
+			float floor = node_sizing(child, axis)->min;
+			float take = BMIN(step, child->size[axis] - floor);
+			child->size[axis] -= take;
+			taken += take;
+		}
+		overflow -= taken;
+		if (taken <= EPSILON) { break; }
+	}
+}
+
+/*! Top down: the final size along an axis, given the element's own */
+static void
+resolve_node_size(bgame_ui_node_t* node, int axis, float size) {
+	node->size[axis] = size;
+	float inner = BMAX(size - node_padding_sum(node, axis), 0.f);
+	bool along = node_main_axis(node) == axis;
+
+	float total = 0.f;
+	int count = 0;
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (!node_in_flow(child)) { continue; }
+		child->size[axis] = child_base_size(child, axis, inner, along);
+		total += child->size[axis];
+		++count;
+	}
+	if (count == 0) { return; }
+
+	if (along) {
+		total += node->decl.layout.child_gap * (float)(count - 1);
+		float remaining = inner - total;
+		if (remaining > EPSILON) {
+			distribute_child_slack(node, axis, remaining);
+		} else if (remaining < -EPSILON) {
+			absorb_child_overflow(node, axis, -remaining);
+		}
+	}
+
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { resolve_node_size(child, axis, child->size[axis]); }
+	}
+}
+
+/*! With the widths settled, what the content makes of them */
+static void
+measure_node_contents(bgame_ui_node_t* node) {
+	if (node->decl.content.measure != NULL) {
+		float inner = BMAX(node->size[AXIS_X] - node_padding_sum(node, AXIS_X), 0.f);
+		node->content_size = node->decl.content.measure(inner, node->decl.content.userdata);
+	}
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { measure_node_contents(child); }
+	}
 }
 
 static void
-bgame_ui_end_text(void) {
-	cf_pop_font_blur();
-	cf_pop_text_effect_active();
-	cf_draw_pop_color();
-	cf_pop_font_size();
-	cf_pop_font();
+apply_node_aspect(bgame_ui_node_t* node) {
+	float ratio = node->decl.layout.aspect_ratio;
+	if (ratio > 0.f && node->size[AXIS_Y] > 0.f) {
+		if (node->size[AXIS_X] / node->size[AXIS_Y] > ratio) {
+			node->size[AXIS_X] = node->size[AXIS_Y] * ratio;
+		} else {
+			node->size[AXIS_Y] = node->size[AXIS_X] / ratio;
+		}
+	}
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { apply_node_aspect(child); }
+	}
 }
 
-static Clay_Dimensions
-bgame_ui_measure_text(
-	Clay_StringSlice text,
-	Clay_TextElementConfig* config,
-	void* userdata
-) {
-	bgame_ui_begin_text(config);
-	CF_V2 size;
-	size = cf_text_size(text.chars, text.length);
-	bgame_ui_end_text();
+static void
+place_node(bgame_ui_node_t* node, float x, float y) {
+	node->pos[AXIS_X] = x;
+	node->pos[AXIS_Y] = y;
+	node->bounds = (bgame_ui_rect_t){ x, y, node->size[AXIS_X], node->size[AXIS_Y] };
 
-	return (Clay_Dimensions){ .width = size.x, .height = size.y };
+	int along = node_main_axis(node);
+	int across = 1 - along;
+	const bgame_ui_layout_t* layout = &node->decl.layout;
+	bgame_ui_align_t align[2] = { layout->child_align.x, layout->child_align.y };
+	float inner[2] = {
+		BMAX(node->size[AXIS_X] - node_padding_sum(node, AXIS_X), 0.f),
+		BMAX(node->size[AXIS_Y] - node_padding_sum(node, AXIS_Y), 0.f),
+	};
+	float block = children_extent(node, along, false);
+	float cursor = node->pos[along] + node_padding_start(node, along) + align_offset(align[along], inner[along] - block);
+	float offset[2] = { 0.f, 0.f };
+	if (node_clips(node)) {
+		offset[AXIS_X] = node->decl.clip.offset.x;
+		offset[AXIS_Y] = node->decl.clip.offset.y;
+	}
+
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (!node_in_flow(child)) { continue; }
+		float p[2];
+		p[along] = cursor;
+		p[across] = node->pos[across]
+			+ node_padding_start(node, across)
+			+ align_offset(align[across], inner[across] - child->size[across]);
+		place_node(child, p[AXIS_X] + offset[AXIS_X], p[AXIS_Y] + offset[AXIS_Y]);
+		cursor += child->size[along] + layout->child_gap;
+	}
+}
+
+/*! A root's own size: the element's sizing against what it was given */
+static float
+root_size(const bgame_ui_node_t* node, int axis, float available) {
+	return child_base_size(node, axis, available, false);
+}
+
+static void
+layout_subtree(bgame_ui_node_t* node, bgame_ui_size_t available) {
+	compute_node_min(node, AXIS_X);
+	resolve_node_size(node, AXIS_X, root_size(node, AXIS_X, available.width));
+	measure_node_contents(node);
+	compute_node_min(node, AXIS_Y);
+	resolve_node_size(node, AXIS_Y, root_size(node, AXIS_Y, available.height));
+	apply_node_aspect(node);
+}
+
+static float
+align_point(bgame_ui_align_t align, float size) {
+	return align_offset(align, size);
+}
+
+static void
+layout_floating(bgame_ui_tree_t* tree, bgame_ui_node_t* node) {
+	const bgame_ui_floating_t* floating = &node->decl.floating;
+	bgame_ui_rect_t target;
+	switch (floating->attach) {
+		case BGAME_UI_ATTACH_PARENT:
+			target = node->parent->bounds;
+			break;
+		case BGAME_UI_ATTACH_ROOT:
+			target = tree->root.bounds;
+			break;
+		case BGAME_UI_ATTACH_ELEMENT: {
+			bgame_ui_node_t* anchor = find_node(tree, floating->target);
+			if (anchor != NULL && !anchor->hidden) {
+				target = anchor->bounds;
+			} else if (!bgame_ui_bounds(floating->target, &target)) {
+				node->hidden = true;
+				return;
+			}
+		} break;
+		case BGAME_UI_ATTACH_NONE:
+			return;
+	}
+
+	layout_subtree(node, (bgame_ui_size_t){ target.width, target.height });
+	float x = target.x
+		+ align_point(floating->origin.x, target.width)
+		- align_point(floating->anchor.x, node->size[AXIS_X])
+		+ floating->offset.x;
+	float y = target.y
+		+ align_point(floating->origin.y, target.height)
+		- align_point(floating->anchor.y, node->size[AXIS_Y])
+		+ floating->offset.y;
+	place_node(node, x, y);
+}
+
+static void
+sort_floating(bgame_ui_tree_t* tree) {
+	bgame_ui_node_t** roots = bgame_alloc_for_frame(
+		sizeof(bgame_ui_node_t*) * (size_t)BMAX(tree->num_floating, 1),
+		_Alignof(bgame_ui_node_t*)
+	);
+	int count = 0;
+	for (bgame_ui_node_t* node = tree->first_floating; node != NULL; node = node->next_floating) {
+		// Insertion keeps declaration order among equal z
+		int i = count++;
+		while (i > 0 && roots[i - 1]->decl.floating.z > node->decl.floating.z) {
+			roots[i] = roots[i - 1];
+			--i;
+		}
+		roots[i] = node;
+	}
+	tree->floating = roots;
+}
+
+static void
+layout_tree(bgame_ui_tree_t* tree) {
+	bgame_ui_node_t* root = &tree->root;
+	layout_subtree(root, tree->input.size);
+	place_node(root, 0.f, 0.f);
+
+	// In declaration order, so a target is placed before what attaches to it
+	for (bgame_ui_node_t* node = tree->first_floating; node != NULL; node = node->next_floating) {
+		layout_floating(tree, node);
+	}
+	sort_floating(tree);
+}
+
+// }}}
+
+// Transitions {{{
+
+static void
+translate_subtree(bgame_ui_node_t* node, float dx, float dy) {
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		child->bounds.x += dx;
+		child->bounds.y += dy;
+		translate_subtree(child, dx, dy);
+	}
+}
+
+static void
+make_node_pose(bgame_ui_node_t* node, const bgame_ui_transform_t* transform, float weight) {
+	if (weight <= 0.f) { return; }
+	bool any = transform->offset.x != 0.f || transform->offset.y != 0.f
+		|| transform->shrink.x != 0.f || transform->shrink.y != 0.f
+		|| transform->rotation != 0.f
+		|| transform->fade != 0.f;
+	if (!any) { return; }
+
+	bgame_ui_rect_t box = node->bounds;
+	CF_V2 center = cf_v2(box.x + box.width * 0.5f, box.y + box.height * 0.5f);
+	CF_V2 pivot = cf_v2(
+		center.x + transform->pivot.x * box.width,
+		center.y + transform->pivot.y * box.height
+	);
+	CF_V2 scale = cf_v2(1.f - transform->shrink.x * weight, 1.f - transform->shrink.y * weight);
+	CF_V2 offset = cf_mul(transform->offset, weight);
+	// UI space is y down, so a counter-clockwise turn on screen is a negative angle here
+	float rotation = -transform->rotation * weight;
+
+	node->pose = (bgame_ui_pose_t){
+		.transform = cf_mul_m32(
+			cf_make_transform_TSR(cf_add(pivot, offset), scale, rotation),
+			cf_make_translation(cf_neg(pivot))
+		),
+		.opacity = 1.f - transform->fade * weight,
+	};
+	node->has_pose = true;
+}
+
+static void
+run_transitions(bgame_ui_tree_t* tree) {
+	barena_t* arena = bgame_frame_arena();
+	float dt = tree->input.dt;
+
+	for (bgame_ui_node_t* node = tree->first_transition; node != NULL; node = node->next_transition) {
+		if (node->hidden) { continue; }
+		const bgame_ui_transition_t* tr = &node->decl.transition;
+		bgame_ui_rect_t target = node->bounds;
+
+		bgame_ui_transition_record_t* previous = NULL;
+		if (ui_previous != NULL) {
+			bgame_ui_transition_record_t** slot = bhamt_get(&ui_previous->transitions, node->id);
+			if (slot != NULL) { previous = *slot; }
+		}
+
+		bgame_ui_transition_record_t* rec = bgame_alloc_for_frame(
+			sizeof(bgame_ui_transition_record_t), _Alignof(bgame_ui_transition_record_t)
+		);
+		if (previous == NULL) {
+			*rec = (bgame_ui_transition_record_t){
+				.initial = target,
+				.target = target,
+				.displayed = target,
+				.phase = BGAME_UI_TRANSITION_ENTERING,
+			};
+		} else {
+			*rec = *previous;
+			rec->elapsed += dt;
+			if (tr->exiting && !previous->exiting) {
+				rec->phase = BGAME_UI_TRANSITION_EXITING;
+				rec->elapsed = 0.f;
+				rec->initial = previous->displayed;
+			} else if (!tr->exiting && previous->phase == BGAME_UI_TRANSITION_EXITING) {
+				rec->phase = BGAME_UI_TRANSITION_IDLE;
+				rec->elapsed = 0.f;
+			}
+			if (!rect_equal(target, previous->target)) {
+				rec->initial = previous->displayed;
+				if (rec->phase == BGAME_UI_TRANSITION_IDLE || rec->phase == BGAME_UI_TRANSITION_MOVING) {
+					rec->phase = BGAME_UI_TRANSITION_MOVING;
+					rec->elapsed = 0.f;
+				}
+			}
+			rec->target = target;
+		}
+		rec->exiting = tr->exiting;
+
+		float progress = tr->duration > 0.f ? BMIN(rec->elapsed / tr->duration, 1.f) : 1.f;
+		bgame_ui_curve_fn_t curve = tr->curve != NULL ? tr->curve : cf_smoothstep;
+		float t = curve(progress);
+		rec->displayed = rect_lerp(rec->initial, rec->target, t);
+		if (
+			progress >= 1.f
+			&& (rec->phase == BGAME_UI_TRANSITION_MOVING || rec->phase == BGAME_UI_TRANSITION_ENTERING)
+		) {
+			rec->phase = BGAME_UI_TRANSITION_IDLE;
+			rec->initial = rec->target;
+		}
+
+		node->transition = rec;
+		node->transition_state = (bgame_ui_transition_state_t){ .phase = rec->phase, .progress = progress };
+		node->unhoverable = rec->phase == BGAME_UI_TRANSITION_ENTERING || rec->phase == BGAME_UI_TRANSITION_EXITING;
+
+		translate_subtree(node, rec->displayed.x - target.x, rec->displayed.y - target.y);
+		node->bounds = rec->displayed;
+		switch (rec->phase) {
+			case BGAME_UI_TRANSITION_ENTERING: make_node_pose(node, &tr->enter, 1.f - t); break;
+			case BGAME_UI_TRANSITION_EXITING: make_node_pose(node, &tr->exit, t); break;
+			default: break;
+		}
+
+		bhamt_put(&tree->transitions, node->id, rec, arena);
+	}
+}
+
+// }}}
+
+// Clipping and commands {{{
+
+static void
+compute_node_clips(bgame_ui_node_t* node, bgame_ui_rect_t outer) {
+	node->clip = rect_intersect(node->bounds, outer);
+	node->clipped_out = rect_empty(node->clip);
+
+	bgame_ui_rect_t inner = outer;
+	if (node->decl.clip.horizontal) {
+		inner.x = node->clip.x;
+		inner.width = node->clip.width;
+	}
+	if (node->decl.clip.vertical) {
+		inner.y = node->clip.y;
+		inner.height = node->clip.height;
+	}
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { compute_node_clips(child, inner); }
+	}
+}
+
+static bgame_ui_box_t
+node_box(const bgame_ui_node_t* node) {
+	return (bgame_ui_box_t){
+		.id = node->id,
+		.bounds = node->bounds,
+		.clip = node->clip,
+		.transition = node->transition != NULL ? &node->transition_state : NULL,
+		.userdata = node->decl.content.userdata,
+	};
+}
+
+static void
+push_command(bgame_ui_tree_t* tree, bgame_ui_command_t command) {
+	tree->commands[tree->num_commands++] = command;
+}
+
+static void
+emit_node_commands(bgame_ui_tree_t* tree, bgame_ui_node_t* node) {
+	if (node->hidden) { return; }
+	bgame_ui_box_t box = node_box(node);
+
+	if (node->has_pose) {
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_POSE_BEGIN, .box = box, .pose = node->pose });
+	}
+	if (node->decl.content.draw != NULL && !node->clipped_out) {
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_DRAW, .box = box, .draw = node->decl.content.draw });
+	}
+
+	bool clip = node_clips(node) && !node->clipped_out && node->first_child != NULL;
+	if (clip) {
+		bgame_ui_box_t clip_box = box;
+		clip_box.bounds = node->clip;
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_CLIP_BEGIN, .box = clip_box });
+	}
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (node_in_flow(child)) { emit_node_commands(tree, child); }
+	}
+	if (clip) {
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_CLIP_END, .box = box });
+	}
+	if (node->has_pose) {
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_POSE_END, .box = box });
+	}
+}
+
+static void
+emit_tree_commands(bgame_ui_tree_t* tree) {
+	bgame_ui_rect_t screen = tree->root.bounds;
+	compute_node_clips(&tree->root, screen);
+	for (int i = 0; i < tree->num_floating; ++i) {
+		compute_node_clips(tree->floating[i], screen);
+	}
+
+	int capacity = tree->num_content + 2 * tree->num_clip + 2 * tree->num_transition + 1;
+	tree->commands = bgame_alloc_for_frame(
+		sizeof(bgame_ui_command_t) * (size_t)capacity,
+		_Alignof(bgame_ui_command_t)
+	);
+	tree->num_commands = 0;
+
+	emit_node_commands(tree, &tree->root);
+	for (int i = 0; i < tree->num_floating; ++i) {
+		emit_node_commands(tree, tree->floating[i]);
+	}
+
+	bgame_ui_node_t* selected = find_node(tree, bgame_ui_inspect_highlight());
+	if (selected != NULL && !selected->hidden) {
+		push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_HIGHLIGHT, .box = node_box(selected) });
+	}
+}
+
+// }}}
+
+// Hover {{{
+
+static bool
+node_hoverable_at(const bgame_ui_node_t* node, CF_V2 p) {
+	return !node->hidden && !node->unhoverable && rect_contains(node->clip, p);
+}
+
+/*! The chain of containing elements down from one, the last declared sibling first */
+static int
+descend_over_chain(const bgame_ui_node_t* node, CF_V2 p, bgame_ui_id_t* out, int count) {
+	out[count++] = node->id;
+	for (bgame_ui_node_t* child = node->last_child; child != NULL; child = child->prev_sibling) {
+		if (node_in_flow(child) && node_hoverable_at(child, p)) {
+			return descend_over_chain(child, p, out, count);
+		}
+	}
+	return count;
+}
+
+static void
+compute_over_list(bgame_ui_tree_t* tree, const bgame_ui_tree_t* previous, CF_V2 p) {
+	tree->over = NULL;
+	tree->num_over = 0;
+	if (previous == NULL) { return; }
+
+	// Deep enough for any chain
+	bgame_ui_id_t* out = bgame_alloc_for_frame(
+		sizeof(bgame_ui_id_t) * (size_t)BMAX(previous->num_nodes, 1),
+		_Alignof(bgame_ui_id_t)
+	);
+
+	// Floating subtrees cover the flow; the topmost one under the pointer takes it
+	for (int i = previous->num_floating - 1; i >= 0; --i) {
+		const bgame_ui_node_t* root = previous->floating[i];
+		if (root->decl.floating.passthrough || !node_hoverable_at(root, p)) { continue; }
+		tree->over = out;
+		tree->num_over = descend_over_chain(root, p, out, 0);
+		return;
+	}
+	for (bgame_ui_node_t* child = previous->root.last_child; child != NULL; child = child->prev_sibling) {
+		if (node_in_flow(child) && node_hoverable_at(child, p)) {
+			tree->over = out;
+			tree->num_over = descend_over_chain(child, p, out, 0);
+			return;
+		}
+	}
+}
+
+// }}}
+
+// Frame {{{
+
+/*! The game sets imgui up, so there may be no context */
+static bool
+imgui_has_pointer(void) {
+	return ImGui_GetCurrentContext() != NULL && ImGui_GetIO()->WantCaptureMouse;
+}
+
+static void
+read_app_input(bgame_ui_frame_t* input) {
+	int width, height;
+	cf_app_get_size(&width, &height);
+	*input = (bgame_ui_frame_t){
+		.size = { (float)width, (float)height },
+		.dt = CF_DELTA_TIME,
+		.wheel = cf_mouse_wheel_motion(),
+	};
+	if (imgui_has_pointer()) {
+		// Off screen and up, so nothing is hovered, pressed or kept captured under the window
+		input->pointer = cf_v2(-1.f, -1.f);
+		input->wheel = 0.f;
+		return;
+	}
+	input->pointer = cf_v2(cf_mouse_x(), cf_mouse_y());
+	input->pointer_down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
+	input->pointer_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT);
+	input->pointer_released = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT);
+	input->pointer_alt_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
 }
 
 static bhamt_hash_t
-bgame_ui_state_key_hash(const void* gkey, size_t size) {
-	const bgame_ui_state_key_t* key = gkey;
+state_key_hash(const void* gkey, size_t size) {
+	(void)size;
+	const ui_state_key_t* key = gkey;
 	ChibiHash64Ctx ctx = chibihash64_init(0);
 	chibihash64_append(&ctx, &key->tag, sizeof(key->tag));
 	chibihash64_append(&ctx, &key->id, sizeof(key->id));
@@ -127,76 +1022,123 @@ bgame_ui_state_key_hash(const void* gkey, size_t size) {
 }
 
 static bool
-bgame_ui_state_key_eq(const void* glhs, const void* grhs, size_t size) {
-	const bgame_ui_state_key_t* lhs = glhs;
-	const bgame_ui_state_key_t* rhs = grhs;
+state_key_eq(const void* glhs, const void* grhs, size_t size) {
+	(void)size;
+	const ui_state_key_t* lhs = glhs;
+	const ui_state_key_t* rhs = grhs;
 	return lhs->tag == rhs->tag && lhs->id == rhs->id;
 }
 
 static bhamt_hash_t
-bgame_ui_ptr_hash(const void* key, size_t size) {
+ptr_hash(const void* key, size_t size) {
+	(void)size;
 	return chibihash64(key, sizeof(void*), 0);
 }
 
 static bool
-bgame_ui_ptr_eq(const void* glhs, const void* grhs, size_t size) {
+ptr_eq(const void* glhs, const void* grhs, size_t size) {
+	(void)size;
 	const void* const* lhs = glhs;
 	const void* const* rhs = grhs;
 	return *lhs == *rhs;
 }
 
-static void
-bgame_ui_init(void) {
-	size_t mem_size = Clay_MinMemorySize();
-	if (bgame_ui_mem == NULL) {
-		bgame_ui_mem = bgame_malloc(mem_size, bgame_default_allocator);
+void
+bgame_ui_begin(const bgame_ui_frame_t* frame) {
+	if (ui_scope != NULL) {
+		BFMT_ERROR("UI frame begun inside another");
+		return;
+	}
+	bgame_ui_frame_t input;
+	if (frame != NULL) {
+		input = *frame;
+	} else {
+		read_app_input(&input);
 	}
 
-	Clay_Initialize(
-		Clay_CreateArenaWithCapacityAndMemory(mem_size, bgame_ui_mem),
-		(Clay_Dimensions){ .width = 1, .height = 1 },  // We can't call cf_app_get_size yet
-		(Clay_ErrorHandler){
-			.errorHandlerFunction = bgame_ui_error,
-		}
+	ui_previous = ui_current;
+	bgame_ui_tree_t* tree = bgame_alloc_for_frame(sizeof(bgame_ui_tree_t), _Alignof(bgame_ui_tree_t));
+	*tree = (bgame_ui_tree_t){ .input = input };
+	tree->root.decl.layout.sizing.width = BUI_FIXED(input.size.width);
+	tree->root.decl.layout.sizing.height = BUI_FIXED(input.size.height);
+	tree->root.bounds = (bgame_ui_rect_t){ 0.f, 0.f, input.size.width, input.size.height };
+	// Integer keys: the defaults, so nothing points into the module
+	bhamt_init(&tree->index, NULL, NULL);
+	bhamt_init(&tree->transitions, NULL, NULL);
+	ui_current = tree;
+
+	compute_over_list(tree, ui_previous, input.pointer);
+	bool moved = ui_previous != NULL
+		&& (ui_previous->input.pointer.x != input.pointer.x || ui_previous->input.pointer.y != input.pointer.y);
+	if (bgame_ui_inspect_frame(&input, tree->over, tree->num_over)) {
+		// The pick owns the pointer: the UI sees none
+		input.pointer = cf_v2(-1.f, -1.f);
+		input.pointer_down = false;
+		input.pointer_pressed = false;
+		input.pointer_released = false;
+		tree->over = NULL;
+		tree->num_over = 0;
+	}
+	bgame_ui_focus_begin(&(bgame_ui_pointer_t){
+		.x = input.pointer.x,
+		.y = input.pointer.y,
+		.moved = moved,
+		.down = input.pointer_down,
+		.pressed = input.pointer_pressed,
+		.released = input.pointer_released,
+		.over = tree->over,
+		.num_over = tree->num_over,
+	});
+
+	// Swap UI state. The tables outlive the module, so the functions are wrapped.
+	ui_previous_states = ui_current_states;
+	bhamt_init(
+		&ui_current_states,
+		BGAME_FN_WRAPPER(state_key_hash),
+		BGAME_FN_WRAPPER(state_key_eq)
 	);
-	Clay_SetMeasureTextFunction(bgame_ui_measure_text, NULL);
 
-	bhamt_init(&bgame_ui_previous_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
-	bhamt_init(&bgame_ui_current_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
+	// Reset context stacks
+	bhamt_init(&ui_ctx_stacks, BGAME_FN_WRAPPER(ptr_hash), BGAME_FN_WRAPPER(ptr_eq));
+
+	ui_root_scope = (ui_scope_t){ .node = &tree->root };
+	ui_scope = &ui_root_scope;
+	ui_open = &tree->root;
+	ui_duplicate_reported = false;
 }
 
-static void
-bgame_ui_cleanup(void) {
-	bgame_free(bgame_ui_mem, bgame_default_allocator);
-	bgame_free(bgame_ui_fonts, bgame_default_allocator);
+void
+bgame_ui_end(void) {
+	if (ui_scope == NULL) {
+		BFMT_ERROR("UI frame ended without one begun");
+		return;
+	}
+	bgame_ui_tree_t* tree = ui_current;
+	if (ui_open != &tree->root || ui_scope != &ui_root_scope) {
+		BFMT_ERROR("UI frame ended with an element or id still open");
+	}
+
+	layout_tree(tree);
+	run_transitions(tree);
+	emit_tree_commands(tree);
+	bgame_ui_focus_end();
+
+	ui_previous = tree;
+	ui_scope = NULL;
+	ui_open = NULL;
 }
 
-BGAME_ON_LOAD(bgame_ui) {
-	bgame_ui_init();
-}
+// }}}
 
-BGAME_BEFORE_RELOAD(bgame_ui) {
-	bgame_ui_debugger_enabled = Clay_IsDebugModeEnabled();
-}
-
-BGAME_AFTER_RELOAD(bgame_ui) {
-	bgame_ui_init();
-	bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
-
-	Clay_SetDebugModeEnabled(bgame_ui_debugger_enabled);
-}
-
-BGAME_ON_UNLOAD(bgame_ui) {
-	bgame_ui_cleanup();
-}
+// Translation {{{
 
 static const char*
-bgame_ui_translate(void* userdata, const char* context, const char* key) {
+ui_translate(void* userdata, const char* context, const char* key) {
 	return bgame_translation_lookup(userdata, context, key);
 }
 
 static void
-bgame_ui_report_error(void* userdata, const char* context, const char* key, const char* template, int offset) {
+ui_report_error(void* userdata, const char* context, const char* key, const char* template, int offset) {
 	bgame_translation_t* translation = userdata;
 	if (translation != NULL && template != key) {
 		BFMT_WARN(
@@ -211,433 +1153,53 @@ bgame_ui_report_error(void* userdata, const char* context, const char* key, cons
 
 void
 bgame_ui_set_translation(bgame_translation_t* translation) {
-	bgame_ui_current_translation = translation;
+	ui_translation = translation;
 }
 
 bgame_translation_t*
 bgame_ui_translation(void) {
-	return bgame_ui_current_translation;
+	return ui_translation;
 }
 
 bfmt_locale_t*
 bgame_ui_locale(void) {
-	bgame_translation_t* translation = bgame_ui_current_translation;
+	bgame_translation_t* translation = ui_translation;
 	int version = translation != NULL ? bgame_asset_version(translation) : 0;
 	if (
-		!bgame_ui_locale_cache.valid
-		|| bgame_ui_locale_cache.translation != translation
-		|| bgame_ui_locale_cache.version != version
+		!ui_locale_cache.valid
+		|| ui_locale_cache.translation != translation
+		|| ui_locale_cache.version != version
 	) {
 		const char* language = translation != NULL ? bgame_translation_language(translation) : BGAME_UI_SOURCE_LANGUAGE;
-		bgame_ui_locale_cache.locale = (bfmt_locale_t){
+		ui_locale_cache.locale = (bfmt_locale_t){
 			.plural_rule = bfmt_cldr_plural_rule(language),
-			.translate = translation != NULL ? bgame_ui_translate : NULL,
-			.report_error = bgame_ui_report_error,
+			.translate = translation != NULL ? ui_translate : NULL,
+			.report_error = ui_report_error,
 			.userdata = translation,
 		};
-		bgame_ui_locale_cache.valid = true;
-		bgame_ui_locale_cache.translation = translation;
-		bgame_ui_locale_cache.version = version;
+		ui_locale_cache.valid = true;
+		ui_locale_cache.translation = translation;
+		ui_locale_cache.version = version;
 	}
-	return &bgame_ui_locale_cache.locale;
+	return &ui_locale_cache.locale;
 }
 
-uint32_t
-bgame_ui_open_element_id(void) {
-	return Clay_GetOpenElementId();
-}
+// }}}
 
-bool
-bgame_ui_element_bounds(uint32_t id, bgame_ui_rect_t* bounds) {
-	Clay_ElementData data = Clay_GetElementData((Clay_ElementId){ .id = id });
-	if (!data.found) { return false; }
-	*bounds = (bgame_ui_rect_t){
-		.x = data.boundingBox.x,
-		.y = data.boundingBox.y,
-		.width = data.boundingBox.width,
-		.height = data.boundingBox.height,
-	};
-	return true;
-}
-
-void
-bgame_ui_begin(void) {
-	int width, height;
-	cf_app_get_size(&width, &height);
-	Clay_SetLayoutDimensions((Clay_Dimensions){ (float)width, (float)height });
-
-	Clay_SetPointerState(
-		(Clay_Vector2){ cf_mouse_x(), cf_mouse_y() },
-		cf_mouse_down(CF_MOUSE_BUTTON_LEFT)
-	);
-
-	Clay_UpdateScrollContainers(
-		true,
-		(Clay_Vector2){ .y = cf_mouse_wheel_motion() },
-		CF_DELTA_TIME
-	);
-
-	Clay_ElementIdArray over = Clay_GetPointerOverIds();
-	uint32_t* over_ids = bgame_alloc_for_frame(
-		sizeof(uint32_t) * (size_t)BMAX(over.length, 1),
-		_Alignof(uint32_t)
-	);
-	for (int i = 0; i < over.length; ++i) {
-		over_ids[i] = over.internalArray[i].id;
-	}
-	bgame_ui_focus_begin(&(bgame_ui_pointer_t){
-		.x = cf_mouse_x(),
-		.y = cf_mouse_y(),
-		.moved = cf_mouse_motion_x() != 0.f || cf_mouse_motion_y() != 0.f,
-		.down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT),
-		.pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT),
-		.released = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT),
-		.over = over_ids,
-		.num_over = over.length,
-	});
-
-	// Swap UI state
-	{
-		bgame_ui_previous_states = bgame_ui_current_states;
-		bhamt_init(&bgame_ui_current_states, bgame_ui_state_key_hash, bgame_ui_state_key_eq);
-	}
-
-	// Reset context stacks
-	bhamt_init(&bgame_ui_ctx_stacks, bgame_ui_ptr_hash, bgame_ui_ptr_eq);
-
-	Clay_BeginLayout();
-}
-
-Clay_RenderCommandArray
-bgame_ui_end(void) {
-	Clay_RenderCommandArray commands = Clay_EndLayout(CF_DELTA_TIME);
-	bgame_ui_focus_end();
-	return commands;
-}
-
-void
-bgame_register_ui_font(uint16_t id, const char* name) {
-	const char* default_font = sintern("Calibri");
-
-	uint16_t old_capacity = bgame_ui_fonts != NULL ? bgame_ui_fonts->capacity : 0;
-	if (id >= old_capacity) {
-		uint16_t new_capacity = BMAX(BMAX(old_capacity, 1) * 2, id);
-		bgame_ui_fonts = bgame_realloc(
-			bgame_ui_fonts,
-			sizeof(bgame_ui_font_list_t) + new_capacity * sizeof(const char*),
-			bgame_default_allocator
-		);
-		bgame_ui_fonts->capacity = new_capacity;
-		for (uint16_t i = old_capacity; i < new_capacity; ++i) {
-			bgame_ui_fonts->font_names[i] = default_font;
-		}
-	}
-
-	bgame_ui_fonts->font_names[id] = name != NULL ? name : default_font;
-}
-
-void
-bgame_handle_ui_render_command(const Clay_RenderCommand* command) {
-	switch (command->commandType) {
-		case CLAY_RENDER_COMMAND_TYPE_NONE:
-			break;
-		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START: {
-			cf_draw_push_shader(bgame_ui_overlay_shader);
-			cf_draw_set_uniform_color(
-				"u_overlay_color",
-				bgame_ui_color_from_clay(command->renderData.overlayColor.color)
-			);
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END: {
-			cf_draw_pop_shader();
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
-			cf_draw_push_color(
-				bgame_ui_color_from_clay(
-					command->renderData.rectangle.backgroundColor
-				)
-			);
-			cf_draw_box_rounded_fill(
-				bgame_ui_aabb(command->boundingBox),
-				command->renderData.rectangle.cornerRadius.topLeft
-			);
-			cf_draw_pop_color();
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_BORDER: {
-			Clay_BorderRenderData border = command->renderData.border;
-			CF_Aabb aabb = bgame_ui_aabb(command->boundingBox);
-			cf_draw_push_color(bgame_ui_color_from_clay(border.color));
-			if (
-				border.width.top != 0
-				&&
-				border.width.top == border.width.left
-				&&
-				border.width.top == border.width.right
-				&&
-				border.width.top == border.width.bottom
-				&&
-				border.cornerRadius.topLeft == border.cornerRadius.topRight
-				&&
-				border.cornerRadius.topLeft == border.cornerRadius.bottomRight
-				&&
-				border.cornerRadius.topLeft == border.cornerRadius.bottomLeft
-			) {
-				cf_draw_box_rounded(
-					aabb,
-					(float)border.width.top * 0.5f,
-					border.cornerRadius.topLeft
-				);
-			} else {
-				if (border.width.top > 0) {
-					cf_draw_line(
-						cf_v2(
-							aabb.min.x + border.cornerRadius.topLeft,
-							aabb.max.y
-						),
-						cf_v2(
-							aabb.max.x - border.cornerRadius.topRight,
-							aabb.max.y
-						),
-						(float)border.width.top * 0.5f
-					);
-				}
-
-				if (border.width.bottom > 0) {
-					cf_draw_line(
-						cf_v2(
-							aabb.min.x + border.cornerRadius.bottomLeft,
-							aabb.min.y
-						),
-						cf_v2(
-							aabb.max.x - border.cornerRadius.bottomRight,
-							aabb.min.y
-						),
-						(float)border.width.bottom * 0.5f
-					);
-				}
-
-				if (border.width.left > 0) {
-					cf_draw_line(
-						cf_v2(
-							aabb.min.x,
-							aabb.max.y - border.cornerRadius.topLeft
-						),
-						cf_v2(
-							aabb.min.x,
-							aabb.min.y + border.cornerRadius.bottomLeft
-						),
-						(float)border.width.left * 0.5f
-					);
-				}
-
-				if (border.width.right > 0) {
-					cf_draw_line(
-						cf_v2(
-							aabb.max.x,
-							aabb.max.y - border.cornerRadius.topRight
-						),
-						cf_v2(
-							aabb.max.x,
-							aabb.min.y + border.cornerRadius.bottomRight
-						),
-						(float)border.width.right * 0.5f
-					);
-				}
-			}
-			cf_draw_pop_color();
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_TEXT: {
-			bgame_ui_begin_text(&(Clay_TextElementConfig){
-				.fontId = command->renderData.text.fontId,
-				.fontSize = command->renderData.text.fontSize,
-				.textColor = command->renderData.text.textColor,
-				.userData = command->userData,
-			});
-			cf_draw_text(
-				command->renderData.text.stringContents.chars,
-				(CF_V2){ command->boundingBox.x, -command->boundingBox.y },
-				command->renderData.text.stringContents.length
-			);
-			bgame_ui_end_text();
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
-			CF_Sprite sprite = *(CF_Sprite*)command->renderData.image.imageData;
-
-			CF_V2 pivot = cf_sprite_pivot(&sprite);
-			sprite.scale.x = command->boundingBox.width / (float)sprite.w;
-			sprite.scale.y = command->boundingBox.height / (float)sprite.h;
-			sprite.transform.p.x = command->boundingBox.x - pivot.x + (float)sprite.w * sprite.scale.x * 0.5f;
-			sprite.transform.p.y = -command->boundingBox.y - pivot.y - (float)sprite.h * sprite.scale.y * 0.5f;
-
-			cf_draw_sprite(&sprite);
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
-			cf_draw_push_scissor((CF_Rect){
-				.x = (int)command->boundingBox.x,
-				.y = (int)command->boundingBox.y,
-				.w = (int)command->boundingBox.width,
-				.h = (int)command->boundingBox.height,
-			});
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END: {
-			cf_draw_pop_scissor();
-		} break;
-		case CLAY_RENDER_COMMAND_TYPE_CUSTOM: {
-			bgame_custom_ui_element_t* element = command->renderData.custom.customData;
-			if (element != NULL) {
-				element->render(command, element->userdata);
-			}
-		} break;
-	}
-}
-
-void
-bgame_begin_render_ui(void) {
-	int w, h;
-	cf_app_get_size(&w, &h);
-
-	float half_width = w * 0.5f;
-	float half_height = h * 0.5f;
-	cf_draw_push();
-	cf_draw_translate(-half_width, half_height);
-
-	if (bgame_ui_overlay_shader.id == 0) {
-		bgame_load_draw_shader(&bgame_ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
-	}
-}
-
-void
-bgame_end_render_ui(void) {
-	cf_draw_pop();
-}
-
-Clay_CustomElementConfig
-bgame_custom_ui_element(
-	bgame_custom_ui_render_fn_t render_fn,
-	void* userdata
-) {
-	bgame_custom_ui_element_t element = {
-		.render = render_fn,
-		.userdata = userdata,
-	};
-	return (Clay_CustomElementConfig){
-		.customData = bgame_make_frame_copy(element),
-	};
-}
-
-void*
-bgame_ui_text_config(bgame_ui_text_config_t config) {
-	return bgame_make_frame_copy(config);
-}
-
-bgame_ui_transition_config_t*
-bgame_ui_transition_config(bgame_ui_transition_config_t config) {
-	return bgame_make_frame_copy(config);
-}
-
-bool
-bgame_ui_transition(Clay_TransitionCallbackArguments arguments) {
-	float progress = 1.f;
-	if (arguments.duration > 0) {
-		progress = cf_min(arguments.elapsedTime / arguments.duration, 1);
-	}
-
-	bgame_ui_transition_curve_fn_t curve = cf_smoothstep;
-
-	bgame_ui_transition_config_t* config = arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
-		? arguments.current->userData
-		: arguments.target.userData;
-	if (config != NULL) {
-		if (config->curve != NULL) {
-			curve = config->curve;
-		}
-
-		if (
-			arguments.transitionState == CLAY_TRANSITION_STATE_ENTERING
-			&&
-			config->enter_curve != NULL
-		) {
-			curve = config->enter_curve;
-		} else if (
-			arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
-			&&
-			config->exit_curve != NULL
-		) {
-			curve = config->exit_curve;
-		}
-
-		arguments.current->userData = arguments.transitionState == CLAY_TRANSITION_STATE_EXITING
-			? bgame_make_frame_copy(*config) // Retain config for the next frame
-			: config;
-	}
-
-	float lerp_factor = curve(progress);
-	if (config != NULL) {
-		config->state = arguments.transitionState;
-		config->progress = progress;
-	}
-
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_X) {
-		arguments.current->boundingBox.x = cf_lerp(arguments.initial.boundingBox.x, arguments.target.boundingBox.x, lerp_factor);
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_Y) {
-		arguments.current->boundingBox.y = cf_lerp(arguments.initial.boundingBox.y, arguments.target.boundingBox.y, lerp_factor);
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_WIDTH) {
-		arguments.current->boundingBox.width = cf_lerp(arguments.initial.boundingBox.width, arguments.target.boundingBox.width, lerp_factor);
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_HEIGHT) {
-		arguments.current->boundingBox.height = cf_lerp(arguments.initial.boundingBox.height, arguments.target.boundingBox.height, lerp_factor);
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BACKGROUND_COLOR) {
-		arguments.current->backgroundColor = CLAY__INIT(Clay_Color) {
-			.r = cf_lerp(arguments.initial.backgroundColor.r, arguments.target.backgroundColor.r, lerp_factor),
-			.g = cf_lerp(arguments.initial.backgroundColor.g, arguments.target.backgroundColor.g, lerp_factor),
-			.b = cf_lerp(arguments.initial.backgroundColor.b, arguments.target.backgroundColor.b, lerp_factor),
-			.a = cf_lerp(arguments.initial.backgroundColor.a, arguments.target.backgroundColor.a, lerp_factor),
-		};
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_OVERLAY_COLOR) {
-		arguments.current->overlayColor = CLAY__INIT(Clay_Color) {
-			.r = cf_lerp(arguments.initial.overlayColor.r, arguments.target.overlayColor.r, lerp_factor),
-			.g = cf_lerp(arguments.initial.overlayColor.g, arguments.target.overlayColor.g, lerp_factor),
-			.b = cf_lerp(arguments.initial.overlayColor.b, arguments.target.overlayColor.b, lerp_factor),
-			.a = cf_lerp(arguments.initial.overlayColor.a, arguments.target.overlayColor.a, lerp_factor),
-		};
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BORDER_COLOR) {
-		arguments.current->borderColor = CLAY__INIT(Clay_Color) {
-			.r = cf_lerp(arguments.initial.borderColor.r, arguments.target.borderColor.r, lerp_factor),
-			.g = cf_lerp(arguments.initial.borderColor.g, arguments.target.borderColor.g, lerp_factor),
-			.b = cf_lerp(arguments.initial.borderColor.b, arguments.target.borderColor.b, lerp_factor),
-			.a = cf_lerp(arguments.initial.borderColor.a, arguments.target.borderColor.a, lerp_factor),
-		};
-	}
-	if (arguments.properties & CLAY_TRANSITION_PROPERTY_BORDER_WIDTH) {
-		arguments.current->borderWidth = CLAY__INIT(Clay_BorderWidth) {
-			.left = (uint16_t)cf_lerp(arguments.initial.borderWidth.left, arguments.target.borderWidth.left, lerp_factor),
-			.right = (uint16_t)cf_lerp(arguments.initial.borderWidth.right, arguments.target.borderWidth.right, lerp_factor),
-			.top = (uint16_t)cf_lerp(arguments.initial.borderWidth.top, arguments.target.borderWidth.top, lerp_factor),
-			.bottom = (uint16_t)cf_lerp(arguments.initial.borderWidth.bottom, arguments.target.borderWidth.bottom, lerp_factor),
-			.betweenChildren = (uint16_t)cf_lerp(arguments.initial.borderWidth.betweenChildren, arguments.target.borderWidth.betweenChildren, lerp_factor),
-		};
-	}
-
-	return progress >= 1.f;
-}
+// State and context {{{
 
 void*
 bgame_ui__state(size_t size, size_t alignment, const void* tag) {
-	bgame_ui_state_key_t key = {
-		.id = bgame_ui_open_element_id(),
+	ui_state_key_t key = {
+		.id = bgame_ui_scope_id(),
 		.tag = tag,
 	};
 	barena_t* frame_arena = bgame_frame_arena();
-	void** state_ptr = bhamt_upsert(&bgame_ui_current_states, key, frame_arena);
+	void** state_ptr = bhamt_upsert(&ui_current_states, key, frame_arena);
 	if (*state_ptr == NULL) {  // Never seen this frame
 		*state_ptr = bgame_alloc_for_frame(size, alignment);
 
-		void** previous_state_ptr = bhamt_get(&bgame_ui_previous_states, key);
+		void** previous_state_ptr = bhamt_get(&ui_previous_states, key);
 		if (previous_state_ptr == NULL) {  // Never seen before
 			memset(*state_ptr, 0, size);
 		} else {  // Seen last frame
@@ -652,7 +1214,7 @@ void*
 bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag) {
 	barena_t* frame_arena = bgame_frame_arena();
 
-	bgame_ui_ctx_stack_t* stack = bhamt_upsert(&bgame_ui_ctx_stacks, tag, frame_arena);
+	ui_ctx_stack_t* stack = bhamt_upsert(&ui_ctx_stacks, tag, frame_arena);
 
 	// Alloc a new context
 	bgame_ui__ctx_link_t* ctx;
@@ -679,7 +1241,7 @@ bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* 
 
 void*
 bgame_ui__pop_ctx(ptrdiff_t offset, const void* tag) {
-	bgame_ui_ctx_stack_t* stack = bhamt_get(&bgame_ui_ctx_stacks, tag);
+	ui_ctx_stack_t* stack = bhamt_get(&ui_ctx_stacks, tag);
 	if (stack == NULL || stack->current == NULL) { return NULL; }
 
 	bgame_ui__ctx_link_t* ctx = stack->current;
@@ -693,7 +1255,7 @@ bgame_ui__pop_ctx(ptrdiff_t offset, const void* tag) {
 const void*
 bgame_ui__peek_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag) {
 	barena_t* frame_arena = bgame_frame_arena();
-	bgame_ui_ctx_stack_t* stack = bhamt_upsert(&bgame_ui_ctx_stacks, tag, frame_arena);
+	ui_ctx_stack_t* stack = bhamt_upsert(&ui_ctx_stacks, tag, frame_arena);
 
 	if (stack->current != NULL) {
 		return (char*)stack->current + offset;
@@ -705,3 +1267,5 @@ bgame_ui__peek_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* 
 	}
 	return (char*)stack->empty + offset;
 }
+
+// }}}

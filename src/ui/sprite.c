@@ -5,14 +5,14 @@
 static BUI_STATE_TAG(CF_Sprite) bgame_ui_sprite_tag;
 
 static void
-render_sprite(const Clay_RenderCommand* command, void* userdata) {
+render_sprite(const bgame_ui_box_t* box, void* userdata) {
 	bgame_ui_sprite_config_t config = *(bgame_ui_sprite_config_t*)userdata;
-	Clay_BoundingBox bbox = command->boundingBox;
+	bgame_ui_rect_t bbox = box->bounds;
 
 	CF_Sprite sprite = *config.sprite;
 	sprite.transform.p.x =  bbox.x + bbox.width  * 0.5f;
 	sprite.transform.p.y = -bbox.y - bbox.height * 0.5f;
-	// Always scale, to maintain size or aspect ratio, set option in Clay
+	// Always scale to the box; the layout decides the size and aspect
 	sprite.scale = cf_v2(bbox.width / (float)sprite.w, bbox.height / (float)sprite.h);
 
 	switch (config.mode) {
@@ -28,18 +28,19 @@ render_sprite(const Clay_RenderCommand* command, void* userdata) {
 		case BGAME_UI_SPRITE_TILED: {
 			bgame_tiling_t tiling = config.tiling;
 			tiling.origin = cf_v2(bbox.x + tiling.origin.x, -(bbox.y + tiling.origin.y));
-			CF_Aabb area = cf_make_aabb(
-				cf_v2(bbox.x, -(bbox.y + bbox.height)),
-				cf_v2(bbox.x + bbox.width, -bbox.y)
-			);
+			CF_Aabb area = bgame_ui_aabb(bbox);
 			bgame_draw_sprite_tiled(&sprite, area, tiling);
 		} break;
 	}
 }
 
-Clay_CustomElementConfig
+bgame_ui_content_t
 bgame_ui_sprite(bgame_ui_sprite_config_t config) {
-	return bgame_custom_ui_element(render_sprite, bgame_make_frame_copy(config));
+	return (bgame_ui_content_t){
+		.draw = render_sprite,
+		.userdata = bgame_make_frame_copy(config),
+		.debug_name = "sprite",
+	};
 }
 
 struct CF_Sprite*

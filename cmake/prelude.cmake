@@ -68,7 +68,6 @@ set(S2N_USE_CRYPTO_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(BGAME_CUTE_FRAMEWORK_URL https://github.com/bullno1/cute_framework.git CACHE STRING "")
 set(BGAME_REMODULE_URL https://github.com/bullno1/remodule.git CACHE STRING "")
 set(BGAME_BLIBS_URL https://github.com/bullno1/libs.git CACHE STRING "")
-set(BGAME_CLAY_URL https://github.com/bullno1/clay.git CACHE STRING "")
 
 # Adds the dependencies from DIR (the current directory by default), each a submodule named
 # as its target, adding or checking out the ones that are not there. cute_framework is
@@ -82,7 +81,7 @@ function (bgame_add_dependencies)
 	cmake_path(ABSOLUTE_PATH DIR BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
 	cmake_path(RELATIVE_PATH DIR BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" OUTPUT_VARIABLE REL)
 
-	foreach (DEP cute_framework remodule blibs clay)
+	foreach (DEP cute_framework remodule blibs)
 		file(GLOB CONTENT LIST_DIRECTORIES true "${DIR}/${DEP}/*")
 		if (CONTENT)
 			continue ()
@@ -122,7 +121,7 @@ function (bgame_add_dependencies)
 	cmake_path(NORMAL_PATH CF)
 	add_subdirectory("${DIR}/cute_framework" "${CMAKE_CURRENT_BINARY_DIR}/${CF}" SYSTEM EXCLUDE_FROM_ALL)
 
-	foreach (LIB remodule blibs clay)
+	foreach (LIB remodule blibs)
 		add_library(${LIB} INTERFACE)
 		target_include_directories(${LIB} INTERFACE "${DIR}/${LIB}")
 	endforeach ()

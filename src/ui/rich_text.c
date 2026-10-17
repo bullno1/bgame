@@ -1,6 +1,7 @@
 #include <bgame/ui/rich_text.h>
 #include <bgame/allocator/frame.h>
 #include <cute_draw.h>
+#include <float.h>
 
 bgame_ui_text_style_tag_t bgame_ui_text_style;
 
@@ -13,12 +14,17 @@ static const bgame_ui_text_style_t bgame_ui_fallback_text_style = {
 	.color = { .r = 1.f, .g = 0.f, .b = 0.f, .a = 1.f },
 };
 
-// What the render callback needs, copied into the frame
+// What the callbacks need, copied into the frame
 typedef struct {
 	bgame_str_t text;
-	bgame_ui_rich_text_sizing_t sizing;
+	bgame_ui_rich_text_justify_t justify;
 	bgame_ui_text_style_t style;
+	/*! Written by the measure, read by the draw */
 	float wrap_width;
+	CF_V2 size;
+	/*! Unwrapped, once measured without a width; a wider box keeps it */
+	CF_V2 natural;
+	bool has_natural;
 } bgame_ui_rich_text_draw_t;
 
 static const bgame_ui_text_style_t*
@@ -36,16 +42,13 @@ static void
 bgame_ui_push_text_config(const bgame_ui_rich_text_draw_t* draw) {
 	cf_push_font(draw->style.font->name);
 	cf_push_font_size(draw->style.font_size);
-	if (draw->sizing == BGAME_UI_RICH_TEXT_WRAP) {
-		cf_push_text_wrap_width(draw->wrap_width);
-	}
+	cf_push_text_wrap_width(draw->wrap_width);
 }
 
 static void
 bgame_ui_pop_text_config(const bgame_ui_rich_text_draw_t* draw) {
-	if (draw->sizing == BGAME_UI_RICH_TEXT_WRAP) {
-		cf_pop_text_wrap_width();
-	}
+	(void)draw;
+	cf_pop_text_wrap_width();
 	cf_pop_font_size();
 	cf_pop_font();
 }
@@ -67,19 +70,44 @@ bgame_ui_draw_text_pass(
 	cf_pop_text_stroke();
 }
 
+static bgame_ui_size_t
+bgame_ui_measure_rich_text(float width, void* userdata) {
+	bgame_ui_rich_text_draw_t* draw = userdata;
+	// A box the text fits in does not wrap it, whatever rounding says
+	if (draw->has_natural && width >= draw->natural.x) {
+		draw->wrap_width = FLT_MAX;
+		draw->size = draw->natural;
+	} else {
+		draw->wrap_width = width;
+		bgame_ui_push_text_config(draw);
+		draw->size = cf_text_size(draw->text.chars, draw->text.len);
+		bgame_ui_pop_text_config(draw);
+		if (width == FLT_MAX) {
+			draw->natural = draw->size;
+			draw->has_natural = true;
+		}
+	}
+	return (bgame_ui_size_t){ draw->size.x, draw->size.y };
+}
+
 static void
-bgame_ui_render_rich_text(
-	const Clay_RenderCommand* command,
-	void* userdata
-) {
+bgame_ui_render_rich_text(const bgame_ui_box_t* box, void* userdata) {
 	const bgame_ui_rich_text_draw_t* draw = userdata;
 	const bgame_ui_text_outline_t* outline = &draw->style.outline;
 	const bgame_ui_text_shadow_t* shadow = &draw->style.shadow;
-	CF_V2 pos = { command->boundingBox.x, -command->boundingBox.y };
+
+	float slack = box->bounds.width - draw->size.x;
+	float justify = 0.f;
+	switch (draw->justify) {
+		case BGAME_UI_RICH_TEXT_JUSTIFY_LEFT: justify = 0.f; break;
+		case BGAME_UI_RICH_TEXT_JUSTIFY_CENTER: justify = 0.5f; break;
+		case BGAME_UI_RICH_TEXT_JUSTIFY_RIGHT: justify = 1.f; break;
+	}
+	CF_V2 pos = { box->bounds.x + slack * justify, -box->bounds.y };
 	bool outlined = outline->color.a > 0.f && outline->thickness > 0.f;
 
 	bgame_ui_push_text_config(draw);
-	cf_push_text_id(command->id);
+	cf_push_text_id(box->id);
 
 	if (shadow->color.a > 0.f) {
 		CF_V2 shadow_pos = { pos.x + shadow->offset.x, pos.y - shadow->offset.y };
@@ -98,58 +126,19 @@ bgame_ui_render_rich_text(
 	bgame_ui_pop_text_config(draw);
 }
 
-void
-bgame_ui_rich_text(
-	Clay_ElementId id,
-	bgame_ui_rich_text_t rich_text
-) {
-	Clay_LayoutAlignmentX align_x;
-	switch (rich_text.justify) {
-		case BGAME_UI_RICH_TEXT_JUSTIFY_LEFT:
-			align_x = CLAY_ALIGN_X_LEFT;
-			break;
-		case BGAME_UI_RICH_TEXT_JUSTIFY_CENTER:
-			align_x = CLAY_ALIGN_X_CENTER;
-			break;
-		case BGAME_UI_RICH_TEXT_JUSTIFY_RIGHT:
-			align_x = CLAY_ALIGN_X_RIGHT;
-			break;
-	}
-	BUI(id, {
-		.layout = {
-			.sizing = {
-				.width = rich_text.sizing == BGAME_UI_RICH_TEXT_WRAP
-					? CLAY_SIZING_GROW(0)
-					: CLAY_SIZING_FIT(0),
-				.height = CLAY_SIZING_FIT(0),
-			},
-			.childAlignment.x = align_x
-		},
-	}) {
-		Clay_ElementData size_data = Clay_GetElementData(id);
+bgame_ui_content_t
+bgame_ui_rich_text(bgame_ui_rich_text_t rich_text) {
+	bgame_ui_rich_text_draw_t* draw = bgame_make_frame_copy(((bgame_ui_rich_text_draw_t){
+		.text = rich_text.text,
+		.justify = rich_text.justify,
+		.style = *bgame_ui_resolve_text_style(rich_text.style),
+		.wrap_width = FLT_MAX,
+	}));
 
-		if (size_data.found) {
-			bgame_ui_rich_text_draw_t* draw = bgame_make_frame_copy(((bgame_ui_rich_text_draw_t){
-				.text = rich_text.text,
-				.sizing = rich_text.sizing,
-				.style = *bgame_ui_resolve_text_style(rich_text.style),
-				.wrap_width = size_data.boundingBox.width,
-			}));
-
-			bgame_ui_push_text_config(draw);
-			CF_V2 size = cf_text_size(draw->text.chars, draw->text.len);
-			bgame_ui_pop_text_config(draw);
-
-			BUI(CLAY_ID_LOCAL("Content"), {
-				.layout = {
-					.sizing = {
-						.width = CLAY_SIZING_FIXED(size.x),
-						.height = CLAY_SIZING_FIXED(size.y),
-					},
-				},
-				.custom = bgame_custom_ui_element(bgame_ui_render_rich_text, draw),
-			}) {
-			}
-		}
-	}
+	return (bgame_ui_content_t){
+		.draw = bgame_ui_render_rich_text,
+		.measure = bgame_ui_measure_rich_text,
+		.userdata = draw,
+		.debug_name = "text",
+	};
 }

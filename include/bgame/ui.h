@@ -1,10 +1,12 @@
 #ifndef BGAME_UI_H
 #define BGAME_UI_H
 
-#include <clay.h>
-#include <bgame/asset/font.h>
-#include <cute_color.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <cute_math.h>
 #include <bfmt.h>
+#include <bgame/scope.h>
 #include <bgame/asset/translation.h>
 
 /*! The language the source text is written in, for its plural rules */
@@ -12,63 +14,357 @@
 #define BGAME_UI_SOURCE_LANGUAGE "en"
 #endif
 
-#define BUI(...) CLAY(__VA_ARGS__)
+/*! Identity of an element across frames, 0 for none */
+typedef uint64_t bgame_ui_id_t;
 
-#define BUI_GEN_ID() ((Clay_ElementId){ 0 })
+/*! A box in UI space: top-left origin, y down */
+typedef struct {
+	float x, y, width, height;
+} bgame_ui_rect_t;
 
-/*! Declare a tag to be used with @ref bgame_ui_state */
-#define BUI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
+typedef struct {
+	float width, height;
+} bgame_ui_size_t;
 
-/*! Declare a tag to be used with @ref bgame_ui_push_ctx */
-#define BUI_CTX_TAG(TYPE) struct { bgame_ui__ctx_link_t bgame_ui__link; TYPE bgame_ui__ctx; }
+/*! A place in the code, for the inspector to show and jump to */
+typedef struct {
+	const char* file;
+	int line;
+} bgame_ui_loc_t;
 
-/**
- * Push a context for the duration of the following block
- *
- * The new entry is available as `BUI_CTX` inside the block.
- * An optional expression, evaluated once before the block, may initialize it.
- */
-#define BUI_WITH_CTX(TAG, ...) \
-	for ( \
-		typeof(TAG.bgame_ui__ctx)* BUI_CTX = bgame_ui_push_ctx(TAG); \
-		(BUI_CTX != NULL) && (__VA_OPT__((void)(__VA_ARGS__),) 1); \
-		bgame_ui_pop_ctx(TAG), BUI_CTX = NULL \
-	)
+#define BUI_HERE() ((bgame_ui_loc_t){ __FILE__, __LINE__ })
 
-struct bgame_asset_bundle_s;
-
-typedef void (*bgame_custom_ui_render_fn_t)(
-	const Clay_RenderCommand* command,
-	void* userdata
-);
+// Layout {{{
 
 typedef enum {
-	BGAME_UI_ENABLE_TEXT_EFFECT,
-	BGAME_UI_DISABLE_TEXT_EFFECT,
-} bgame_ui_text_effect_state_t;
+	/*! As large as the content, within min and max */
+	BGAME_UI_SIZING_FIT = 0,
+	/*! A share of what the parent has left, within min and max */
+	BGAME_UI_SIZING_GROW,
+	/*! Pixels */
+	BGAME_UI_SIZING_FIXED,
+	/*! A fraction of the parent, 0 to 1 */
+	BGAME_UI_SIZING_PERCENT,
+} bgame_ui_sizing_type_t;
 
 typedef struct {
-	bgame_ui_text_effect_state_t effect;
-	int blur;
-} bgame_ui_text_config_t;
+	bgame_ui_sizing_type_t type;
+	float value;
+	/*! 0 for no bound */
+	float min, max;
+} bgame_ui_sizing_t;
 
-typedef float (*bgame_ui_transition_curve_fn_t)(float progress);
+#define BUI_FIT(...)   ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_FIT, __VA_ARGS__ })
+#define BUI_GROW(...)  ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_GROW, __VA_ARGS__ })
+#define BUI_FIXED(V)   ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_FIXED, .value = (V) })
+#define BUI_PERCENT(V) ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_PERCENT, .value = (V) })
+
+typedef enum {
+	BGAME_UI_LEFT_TO_RIGHT = 0,
+	BGAME_UI_TOP_TO_BOTTOM,
+} bgame_ui_direction_t;
+
+typedef enum {
+	BGAME_UI_ALIGN_START = 0,
+	BGAME_UI_ALIGN_CENTER,
+	BGAME_UI_ALIGN_END,
+} bgame_ui_align_t;
 
 typedef struct {
-	bgame_ui_transition_curve_fn_t curve;
-	bgame_ui_transition_curve_fn_t enter_curve;
-	bgame_ui_transition_curve_fn_t exit_curve;
-	/*! Written back by the layout: idle unless the element is in a transition this frame */
-	Clay_TransitionState state;
-	/*! Written back by the layout: how far along the transition is, 0 to 1 */
+	bgame_ui_align_t x, y;
+} bgame_ui_align2_t;
+
+typedef struct {
+	float left, right, top, bottom;
+} bgame_ui_padding_t;
+
+typedef struct {
+	struct { bgame_ui_sizing_t width, height; } sizing;
+	bgame_ui_direction_t direction;
+	bgame_ui_padding_t padding;
+	float child_gap;
+	bgame_ui_align2_t child_align;
+	/*! Width over height the box is shrunk to once sized, 0 for none */
+	float aspect_ratio;
+} bgame_ui_layout_t;
+
+/*! Children are cut at the box on the chosen axes; the offset scrolls them */
+typedef struct {
+	bool horizontal, vertical;
+	CF_V2 offset;
+} bgame_ui_clip_t;
+
+typedef enum {
+	/*! Laid out in the flow */
+	BGAME_UI_ATTACH_NONE = 0,
+	/*! Over the parent */
+	BGAME_UI_ATTACH_PARENT,
+	/*! Over @ref bgame_ui_floating_t::target */
+	BGAME_UI_ATTACH_ELEMENT,
+	/*! Over the whole UI */
+	BGAME_UI_ATTACH_ROOT,
+} bgame_ui_attach_t;
+
+/*! Taken out of the flow and placed over something, drawn after it */
+typedef struct {
+	bgame_ui_attach_t attach;
+	bgame_ui_id_t target;
+	/*! The point of this box that sits on @ref origin of what it attaches to */
+	bgame_ui_align2_t anchor;
+	bgame_ui_align2_t origin;
+	CF_V2 offset;
+	/*! Higher draws later, ties in declaration order */
+	int16_t z;
+	/*! The pointer sees through to what is below */
+	bool passthrough;
+} bgame_ui_floating_t;
+
+// }}}
+
+// Transition {{{
+
+/*! A departure from the laid-out box. Zero is none. */
+typedef struct {
+	/*! Pixels in UI space */
+	CF_V2 offset;
+	/*! Fraction of each dimension lost: { 1, 1 } is down to nothing */
+	CF_V2 shrink;
+	/*! Radians, counter-clockwise on screen */
+	float rotation;
+	/*! Fraction of opacity lost: 1 is invisible */
+	float fade;
+	/*! What shrink and rotation anchor to, as fractions of the box from its center: { 0, -0.5 } is the top edge */
+	CF_V2 pivot;
+} bgame_ui_transform_t;
+
+typedef float (*bgame_ui_curve_fn_t)(float progress);
+
+/**
+ * How the element arrives, moves and leaves
+ */
+typedef struct {
+	/*! Seconds, 0 for none */
+	float duration;
+	/*! NULL for smoothstep. Shapes motion only; progress is reported raw. */
+	bgame_ui_curve_fn_t curve;
+	bgame_ui_transform_t enter;
+	bgame_ui_transform_t exit;
+	bool exiting;
+} bgame_ui_transition_t;
+
+typedef enum {
+	BGAME_UI_TRANSITION_IDLE = 0,
+	BGAME_UI_TRANSITION_ENTERING,
+	BGAME_UI_TRANSITION_MOVING,
+	BGAME_UI_TRANSITION_EXITING,
+} bgame_ui_transition_phase_t;
+
+typedef struct {
+	bgame_ui_transition_phase_t phase;
+	/*! 0 to 1 through the phase, linear */
 	float progress;
-} bgame_ui_transition_config_t;
+} bgame_ui_transition_state_t;
+
+// }}}
+
+// Content {{{
+
+/*! Where an element ended up, as a draw sees it */
+typedef struct {
+	bgame_ui_id_t id;
+	bgame_ui_rect_t bounds;
+	/*! The part of @ref bounds left visible by clipping */
+	bgame_ui_rect_t clip;
+	/*! NULL for an element without a transition */
+	const bgame_ui_transition_state_t* transition;
+	void* userdata;
+} bgame_ui_box_t;
+
+typedef void (*bgame_ui_draw_fn_t)(const bgame_ui_box_t* box, void* userdata);
+
+/*! The content's size when given this much width, inside the padding */
+typedef bgame_ui_size_t (*bgame_ui_measure_fn_t)(float width, void* userdata);
+
+/*! What the element draws of its own, under its children */
+typedef struct {
+	bgame_ui_draw_fn_t draw;
+	/*! NULL for content with no size of its own */
+	bgame_ui_measure_fn_t measure;
+	/*! Must live until the frame is rendered, see bgame_make_frame_copy */
+	void* userdata;
+	/*! For the inspector, NULL for none */
+	const char* debug_name;
+} bgame_ui_content_t;
+
+// }}}
+
+// Focus {{{
+
+typedef enum {
+	BGAME_UI_FOCUS_NONE = 0,
+	/*! Where focus can land */
+	BGAME_UI_FOCUS_TARGET,
+	/*! Scopes its children and remembers which was focused last */
+	BGAME_UI_FOCUS_GROUP,
+} bgame_ui_focus_kind_t;
+
+/*! Flags and actions as in bgame/ui/focus.h */
+typedef struct {
+	bgame_ui_focus_kind_t kind;
+	uint32_t flags;
+	uint32_t claims;
+} bgame_ui_focus_t;
+
+// }}}
+
+/*! An element. Zero is an anonymous, fit-sized, undrawn box in the flow. */
+typedef struct {
+	/*! Identity under the open scope. NULL for an anonymous element, keyed by its place among the anonymous siblings. */
+	const char* name;
+	/*! Distinguish elements of the same name under one scope */
+	uint64_t index;
+	bgame_ui_layout_t layout;
+	bgame_ui_clip_t clip;
+	bgame_ui_floating_t floating;
+	bgame_ui_content_t content;
+	bgame_ui_focus_t focus;
+	bgame_ui_transition_t transition;
+} bgame_ui_element_t;
+
+// Building {{{
+
+/*! The UI's input for a frame */
+typedef struct {
+	bgame_ui_size_t size;
+	float dt;
+	CF_V2 pointer;
+	bool pointer_down;
+	bool pointer_pressed;
+	bool pointer_released;
+	/*! The secondary button, which cancels a pick */
+	bool pointer_alt_pressed;
+	float wheel;
+} bgame_ui_frame_t;
+
+/*! Begin a frame, NULL for the app's window and mouse. Hover is decided against last frame's layout. */
+void
+bgame_ui_begin(const bgame_ui_frame_t* frame);
+
+/*! Lay out what was declared and play the transitions */
+void
+bgame_ui_end(void);
+
+/*! Open an element under the open scope, declared at @p loc, returning its id */
+bgame_ui_id_t
+bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element);
 
 void
-bgame_ui_begin(void);
+bgame_ui_close(void);
 
-Clay_RenderCommandArray
-bgame_ui_end(void);
+/*! Whether the element just opened still has its block to run */
+bool
+bgame_ui__block(void);
+
+/**
+ * `bgame_ui_open(element)`: @ref bgame_ui_open_at from here
+ */
+#define bgame_ui_open bgame_ui__open_line(__LINE__)
+#define bgame_ui__open_line(LINE) bgame_ui_open_at((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_arg
+#define bgame_ui__open_arg(...) (__VA_ARGS__))
+
+#define BUI__ELEM(...) ((bgame_ui_element_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
+
+/*! `BUI({ .name = "X", .layout = ... }) { children }`, placed at the line of `BUI` */
+#define BUI BUI__AT(__LINE__)
+#define BUI__AT(LINE) \
+	for (bgame_ui_open_at((bgame_ui_loc_t){ __FILE__, LINE }, BUI__ARGS
+#define BUI__ARGS(...) \
+	BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
+
+/*! Narrow the id scope without an element, for code that emits siblings */
+void
+bgame_ui_push_id(const char* name, uint64_t index);
+
+void
+bgame_ui_pop_id(void);
+
+#define BUI_ID_SCOPE(NAME, INDEX) \
+	BGAME_SCOPE(bgame_ui_push_id((NAME), (INDEX)), bgame_ui_pop_id())
+
+/*! The open element, 0 at the root */
+bgame_ui_id_t
+bgame_ui_open_id(void);
+
+/*! The open scope: the open element or the last pushed id */
+bgame_ui_id_t
+bgame_ui_scope_id(void);
+
+/*! What @ref bgame_ui_open gives this name and index under @p scope. Pure. */
+bgame_ui_id_t
+bgame_ui_make_id(bgame_ui_id_t scope, const char* name, uint64_t index);
+
+/*! Where an element was last frame, false if it was not there */
+bool
+bgame_ui_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds);
+
+/*! Last frame's transition of an element, NULL if it had none */
+const bgame_ui_transition_state_t*
+bgame_ui_transition_state(bgame_ui_id_t id);
+
+/*! The elements under the pointer last frame, outermost first */
+const bgame_ui_id_t*
+bgame_ui_over(int* count);
+
+/*! Pixels, y down, from a UI rectangle to CF's y-up drawing space */
+static inline CF_Aabb
+bgame_ui_aabb(bgame_ui_rect_t rect) {
+	return (CF_Aabb){
+		.min = { rect.x, -(rect.y + rect.height) },
+		.max = { rect.x + rect.width, -rect.y },
+	};
+}
+
+// }}}
+
+// Rendering {{{
+
+typedef enum {
+	/*! @ref bgame_ui_command_t::draw with @ref bgame_ui_command_t::box */
+	BGAME_UI_CMD_DRAW,
+	/*! Cut everything until the matching end at the box */
+	BGAME_UI_CMD_CLIP_BEGIN,
+	BGAME_UI_CMD_CLIP_END,
+	/*! Transform everything until the matching end */
+	BGAME_UI_CMD_POSE_BEGIN,
+	BGAME_UI_CMD_POSE_END,
+	/*! The inspector's selection, over everything */
+	BGAME_UI_CMD_HIGHLIGHT,
+} bgame_ui_command_type_t;
+
+typedef struct {
+	/*! In UI space */
+	CF_M3x2 transform;
+	float opacity;
+} bgame_ui_pose_t;
+
+typedef struct {
+	bgame_ui_command_type_t type;
+	bgame_ui_box_t box;
+	bgame_ui_draw_fn_t draw;
+	bgame_ui_pose_t pose;
+} bgame_ui_command_t;
+
+/*! This frame's layout in paint order, frame-lived */
+const bgame_ui_command_t*
+bgame_ui_commands(int* count);
+
+/*! Draw the commands with cute_framework */
+void
+bgame_ui_render(void);
+
+// }}}
+
+// Text {{{
 
 /**
  * The language UI text is translated to, NULL for the source text.
@@ -82,47 +378,26 @@ bgame_ui_set_translation(bgame_translation_t* translation);
 bgame_translation_t*
 bgame_ui_translation(void);
 
-/*! The current locale */
+/*! The current locale, for one use */
 bfmt_locale_t*
 bgame_ui_locale(void);
 
-void
-bgame_register_ui_font(uint16_t id, const char* name);
+// }}}
 
-const char*
-bgame_get_ui_font_name(uint16_t id) ;
+// State and context {{{
 
-void
-bgame_begin_render_ui(void);
+/*! Declare a tag to be used with @ref bgame_ui_state */
+#define BUI_STATE_TAG(TYPE) struct { TYPE bgame_ui__type; }
 
-void
-bgame_handle_ui_render_command(const Clay_RenderCommand* command);
-
-void
-bgame_end_render_ui(void);
-
-void*
-bgame_ui_text_config(bgame_ui_text_config_t config);
-
-/*! A config for `.transition.userData`, alive for the frame; read it back after the layout */
-bgame_ui_transition_config_t*
-bgame_ui_transition_config(bgame_ui_transition_config_t config);
+/*! Declare a tag to be used with @ref bgame_ui_push_ctx */
+#define BUI_CTX_TAG(TYPE) struct { bgame_ui__ctx_link_t bgame_ui__link; TYPE bgame_ui__ctx; }
 
 /**
  * Retrieve transient UI state
  *
- * The state is keyed by @p TAG (declared with @ref BUI_STATE_TAG) and the current open element's id.
- * If the state was not found, it will be allocated and zero initialized.
- * The same value will be returned the next frame when this function is called
- * again.
- *
- * The state is arena-allocated so it does not have a stable address.
- * It will be copied from frame to frame.
- *
- * @param TAG A variable, declared with @ref BUI_STATE_TAG, whose address differentiates states of the same element
- * @return the transient UI state
- *
- * @see BUI_STATE_TAG
+ * Keyed by @p TAG and the open scope's id. Zero-initialized when first seen,
+ * carried over from frame to frame while declared, and dropped a frame after
+ * it stops being. The address is only good for the frame.
  */
 #define bgame_ui_state(TAG) \
 	(typeof(TAG.bgame_ui__type)*)bgame_ui__state( \
@@ -132,19 +407,9 @@ bgame_ui_transition_config(bgame_ui_transition_config_t config);
 	)
 
 /**
- * Create a copy of the current context
+ * Push a copy of the current context, zero-initialized if there is none
  *
- * A context stack is useful for passing data deep into a UI tree.
- * For example: theming/styling data.
- *
- * This function creates a copy of the current context identified by @p TAG (
- * declared with @ref BUI_CTX_TAG).
- * If a context does not exist yet, it will be created and zero-initialized.
- *
- * @param TAG A variable, declared with @ref BUI_CTX_TAG, whose address differentiates contexts
- * @return the new entry in the context stack
- *
- * @see BUI_CTX_TAG
+ * For passing data down a UI tree, such as a theme.
  */
 #define bgame_ui_push_ctx(TAG) \
 	((typeof(TAG.bgame_ui__ctx)*)bgame_ui__push_ctx( \
@@ -154,24 +419,14 @@ bgame_ui_transition_config(bgame_ui_transition_config_t config);
 		&TAG \
 	))
 
-/**
- * Pop the current context and return the previous context
- *
- * Does nothing and returns NULL if there is nothing on the stack.
- * Returns NULL if the stack becomes empty.
- */
+/*! Pop the current context and return the previous one, NULL when the stack is empty */
 #define bgame_ui_pop_ctx(TAG) \
 	((typeof(TAG.bgame_ui__ctx)*)bgame_ui__pop_ctx( \
 		offsetof(typeof(TAG), bgame_ui__ctx), \
 		&TAG \
 	))
 
-/**
- * Retrieve the current context
- *
- * Only the code that pushed a context may change it.
- * If there is nothing on the stack, a zero-initialized context is returned.
- */
+/*! The current context, zero when nothing was pushed. Only the pusher may change it. */
 #define bgame_ui_peek_ctx(TAG) \
 	((const typeof(TAG.bgame_ui__ctx)*)bgame_ui__peek_ctx( \
 		sizeof(TAG), \
@@ -180,77 +435,18 @@ bgame_ui_transition_config(bgame_ui_transition_config_t config);
 		&TAG \
 	))
 
-Clay_CustomElementConfig
-bgame_custom_ui_element(
-	bgame_custom_ui_render_fn_t render_fn,
-	void* userdata
-);
-
-bool
-bgame_ui_transition(Clay_TransitionCallbackArguments arguments);
-
-static inline void
-bgame_load_ui_font(
-	struct bgame_asset_bundle_s* bundle,
-	uint16_t id,
-	const char* path
-) {
-	bgame_register_ui_font(id, bgame_load_font(bundle, path));
-}
-
-static inline void
-bgame_render_ui(Clay_RenderCommandArray commands) {
-	bgame_begin_render_ui();
-	for (int i = 0; i < commands.length; i++) {
-		const Clay_RenderCommand* command = &commands.internalArray[i];
-		bgame_handle_ui_render_command(command);
-	}
-	bgame_end_render_ui();
-}
-
-static inline Clay_Color
-bgame_ui_color_from_cf(CF_Color color) {
-	return (Clay_Color){
-		.a = color.a,
-		.r = color.r,
-		.g = color.g,
-		.b = color.b,
-	};
-}
-
-static inline Clay_Color
-bgame_ui_color_rgb(uint8_t r, uint8_t g, uint8_t b) {
-	return bgame_ui_color_from_cf(cf_make_color_rgb(r, g, b));
-}
-
-static inline Clay_Color
-bgame_ui_color_rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-	return bgame_ui_color_from_cf(cf_make_color_rgba(r, g, b, a));
-}
-
-static inline CF_Color
-bgame_ui_color_from_clay(Clay_Color color) {
-	return (CF_Color) {
-		.a = color.a <= 1.f ? color.a : color.a / 255.f,
-		.r = color.r <= 1.f ? color.r : color.r / 255.f,
-		.g = color.g <= 1.f ? color.g : color.g / 255.f,
-		.b = color.b <= 1.f ? color.b : color.b / 255.f,
-	};
-}
-
-static inline CF_Aabb
-bgame_ui_aabb(Clay_BoundingBox bbox) {
-	return (CF_Aabb){
-		.min = {
-			.x = bbox.x,
-			.y = -(bbox.y + bbox.height),
-		},
-		.max = {
-			.x = bbox.x + bbox.width,
-			.y = -bbox.y,
-		},
-	};
-}
+/**
+ * Push a context for the duration of the following block
+ *
+ * The new entry is available as `BUI_CTX` inside the block.
+ * An optional expression, evaluated once before the block, may initialize it.
+ */
+#define BUI_WITH_CTX(TAG, ...) \
+	for ( \
+		typeof(TAG.bgame_ui__ctx)* BUI_CTX = bgame_ui_push_ctx(TAG); \
+		(BUI_CTX != NULL) && (__VA_OPT__((void)(__VA_ARGS__),) 1); \
+		bgame_ui_pop_ctx(TAG), BUI_CTX = NULL \
+	)
 
 typedef struct bgame_ui__ctx_link_s bgame_ui__ctx_link_t;
 
@@ -269,5 +465,7 @@ bgame_ui__pop_ctx(ptrdiff_t offset, const void* tag);
 
 const void*
 bgame_ui__peek_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag);
+
+// }}}
 
 #endif

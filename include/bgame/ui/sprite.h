@@ -23,9 +23,11 @@ typedef struct {
 	bgame_tiling_t tiling;
 } bgame_ui_sprite_config_t;
 
-Clay_CustomElementConfig
+/*! Content drawing a sprite over the element's box */
+bgame_ui_content_t
 bgame_ui_sprite(bgame_ui_sprite_config_t config);
 
+/*! A sprite instance playing an animation, kept as state of the open scope */
 struct CF_Sprite*
 bgame_ui_sprite_at_anim(const struct CF_Sprite* sprite, const char* animation);
 

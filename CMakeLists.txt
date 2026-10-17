@@ -29,6 +29,8 @@ set(SOURCES
 	"src/ui/rich_text.c"
 	"src/ui/sprite.c"
 	"src/ui/focus.c"
+	"src/ui/render.c"
+	"src/ui/inspect.c"
 	"src/internal.c"
 	"src/ui/gen/overlay_shd.h"
 	"src/draw.c"
@@ -54,7 +56,6 @@ target_link_libraries(bgame PUBLIC
 	cute
 	$<$<BOOL:${RELOADABLE}>:remodule>
 	blibs
-	clay
 )
 if(MSVC)
     target_compile_options(bgame PUBLIC "/experimental:c11atomics")

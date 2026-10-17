@@ -34,24 +34,3 @@
 #include <bresmon.h>
 #endif
 
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-compare"
-#pragma GCC diagnostic ignored "-Wextra-semi"
-#endif
-
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4244 4305)
-#endif
-
-#define CLAY_IMPLEMENTATION
-#include <clay.h>
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif

@@ -7,11 +7,6 @@
 #include <cute_color.h>
 
 typedef enum {
-	BGAME_UI_RICH_TEXT_WRAP = 0,
-	BGAME_UI_RICH_TEXT_GROW,
-} bgame_ui_rich_text_sizing_t;
-
-typedef enum {
 	BGAME_UI_RICH_TEXT_JUSTIFY_LEFT = 0,
 	BGAME_UI_RICH_TEXT_JUSTIFY_CENTER,
 	BGAME_UI_RICH_TEXT_JUSTIFY_RIGHT,
@@ -26,7 +21,7 @@ typedef struct {
 /*! A copy of the text drawn under it, offset in UI pixels (y down). None when the color is transparent. */
 typedef struct {
 	CF_Color color;
-	Clay_Vector2 offset;
+	CF_V2 offset;
 	int blur;
 } bgame_ui_text_shadow_t;
 
@@ -51,16 +46,21 @@ extern bgame_ui_text_style_tag_t bgame_ui_text_style;
 
 typedef struct {
 	bgame_str_t text;
-	bgame_ui_rich_text_sizing_t sizing;
+	/*! Where the lines sit in a box wider than the text */
 	bgame_ui_rich_text_justify_t justify;
 	/*! NULL for the current @ref bgame_ui_text_style */
 	const bgame_ui_text_style_t* style;
 } bgame_ui_rich_text_t;
 
-void
-bgame_ui_rich_text(
-	Clay_ElementId id,
-	bgame_ui_rich_text_t rich_text
-);
+/**
+ * Content drawing a text in the element's box, wrapped at its width
+ *
+ * A fit width is as wide as the text; a grow or fixed width wraps it.
+ */
+bgame_ui_content_t
+bgame_ui_rich_text(bgame_ui_rich_text_t rich_text);
+
+/*! `BUI_TEXT(.text = ..., .style = ...)` */
+#define BUI_TEXT(...) bgame_ui_rich_text((bgame_ui_rich_text_t){ __VA_ARGS__ })
 
 #endif
