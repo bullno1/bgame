@@ -28,6 +28,7 @@ set(SOURCES
 	"src/ui.c"
 	"src/ui/rich_text.c"
 	"src/ui/sprite.c"
+	"src/ui/fill.c"
 	"src/ui/focus.c"
 	"src/ui/render.c"
 	"src/ui/inspect.c"
