@@ -217,12 +217,8 @@ typedef struct {
 
 // }}}
 
-/*! An element. Zero is an anonymous, fit-sized, undrawn box in the flow. */
+/*! An element. Zero is a fit-sized, undrawn box in the flow. */
 typedef struct {
-	/*! Identity under the open scope. NULL for an anonymous element, keyed by its place among the anonymous siblings. */
-	const char* name;
-	/*! Distinguish elements of the same name under one scope */
-	uint64_t index;
 	bgame_ui_layout_t layout;
 	bgame_ui_clip_t clip;
 	bgame_ui_floating_t floating;
@@ -254,32 +250,101 @@ bgame_ui_begin(const bgame_ui_frame_t* frame);
 void
 bgame_ui_end(void);
 
-/*! Open an element under the open scope, declared at @p loc, returning its id */
+/**
+ * What tells an element apart under the open scope
+ *
+ * A name alone, a name with an index (an item's identity in a list, not its
+ * position), or none, for an element keyed by its place among the anonymous
+ * siblings of the scope.
+ */
+typedef struct {
+	const char* name;
+	uint64_t index;
+} bgame_ui_key_t;
+
+#define BUI_KEY(NAME, INDEX) ((bgame_ui_key_t){ .name = (NAME), .index = (INDEX) })
+
+/*! The key of an anonymous element */
+#define BUI_GEN_ID() ((const char*)NULL)
+
+static inline bgame_ui_key_t
+bgame_ui__key_of_key(bgame_ui_key_t key) {
+	return key;
+}
+
+static inline bgame_ui_key_t
+bgame_ui__key_of_name(const char* name) {
+	return (bgame_ui_key_t){ .name = name };
+}
+
+/*! A name, a @ref BUI_KEY, or @ref BUI_GEN_ID */
+#define BUI__KEY(KEY) \
+	_Generic((KEY), bgame_ui_key_t: bgame_ui__key_of_key, default: bgame_ui__key_of_name)(KEY)
+
+/*! Begin an element under the open scope, declared at @p loc; the scope is its own from here */
 bgame_ui_id_t
-bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element);
+bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key);
+
+/*! Give the begun element its declaration, returning its id */
+bgame_ui_id_t
+bgame_ui__configure(const bgame_ui_element_t* element);
+
+/**
+ * Open an element, returning its id: `bgame_ui_open_at(loc, "Name", &element)`
+ *
+ * The declaration is evaluated inside the element, so state looked up while
+ * building it is the element's own.
+ */
+#define bgame_ui_open_at(LOC, KEY, ...) \
+	(bgame_ui__begin((LOC), BUI__KEY(KEY)), bgame_ui__configure(__VA_ARGS__))
 
 void
 bgame_ui_close(void);
 
-/*! Whether the element just opened still has its block to run */
 bool
 bgame_ui__block(void);
 
 /**
- * `bgame_ui_open(element)`: @ref bgame_ui_open_at from here
+ * Call a function taking a @ref bgame_ui_loc_t first with the location of the call
+ *
+ * `FN` must be a function, not a macro.
+ * `#define my_widget BUI_CALL_WITH_LOC(my_widget_at)` expands `my_widget(x, y)` into
+ * `my_widget_at(BUI_HERE(), x, y)`.
  */
+#define BUI_CALL_WITH_LOC(FN) FN(BUI_HERE(), BUI__CALL_WITH_LOC_ARGS
+#define BUI__CALL_WITH_LOC_ARGS(...) __VA_ARGS__)
+
+/**
+ * @ref BUI_CALL_WITH_LOC for a function taking a config struct, as a braced list or a variable
+ *
+ * `#define my_widget BUI_CALL_WITH_LOC_AND_CONFIG(my_widget_at, my_widget_config_t)` expands
+ * `my_widget({ .a = 1 })` and `my_widget(config)` into `my_widget_at(BUI_HERE(), ...)`, the
+ * way @ref BUI takes its declaration.
+ */
+#define BUI_CALL_WITH_LOC_AND_CONFIG(FN, TYPE) FN(BUI_HERE(), ((TYPE[1])BUI__CALL_WITH_LOC_AND_CONFIG_ARGS
+#define BUI__CALL_WITH_LOC_AND_CONFIG_ARGS(...) { __VA_OPT__([0] =) __VA_ARGS__ })[0])
+
+/*! `bgame_ui_open("Name", element)`: @ref bgame_ui_open_at from here. Spelled out, since the wrapper takes a function, not a macro. */
 #define bgame_ui_open bgame_ui__open_line(__LINE__)
-#define bgame_ui__open_line(LINE) bgame_ui_open_at((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_arg
-#define bgame_ui__open_arg(...) (__VA_ARGS__))
+#define bgame_ui__open_line(LINE) (bgame_ui__begin((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_args
+#define bgame_ui__open_args(KEY, ...) BUI__KEY(KEY)), bgame_ui__configure(__VA_ARGS__))
 
 #define BUI__ELEM(...) ((bgame_ui_element_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
 
-/*! `BUI({ .name = "X", .layout = ... }) { children }`, placed at the line of `BUI` */
+/*! `BUI` placed at a location given to the widget by its caller, see @ref BUI_HERE */
+#define BUI_AT(LOC, KEY, ...) \
+	for ( \
+		bgame_ui__begin((LOC), BUI__KEY(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); \
+		bgame_ui__block(); \
+		bgame_ui_close() \
+	)
+
+/*! `BUI("X", { .layout = ... }) { children }`, placed at the line of `BUI` */
 #define BUI BUI__AT(__LINE__)
 #define BUI__AT(LINE) \
-	for (bgame_ui_open_at((bgame_ui_loc_t){ __FILE__, LINE }, BUI__ARGS
-#define BUI__ARGS(...) \
-	BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
+	for (bgame_ui__begin((bgame_ui_loc_t){ __FILE__, LINE }, BUI__ARGS
+#define BUI__ARGS(KEY, ...) \
+	BUI__KEY(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
 
 /*! Narrow the id scope without an element, for code that emits siblings */
 void

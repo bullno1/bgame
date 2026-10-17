@@ -243,7 +243,7 @@ node_clips(const bgame_ui_node_t* node) {
 }
 
 bgame_ui_id_t
-bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element) {
+bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	if (ui_scope == NULL) {
 		BFMT_ERROR("Element opened outside of a UI frame");
 		return 0;
@@ -251,24 +251,23 @@ bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element) {
 	bgame_ui_tree_t* tree = ui_current;
 	barena_t* arena = bgame_frame_arena();
 
-	uint64_t index = element->index;
-	if (element->name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
-	bgame_ui_id_t id = bgame_ui_make_id(ui_scope->id, element->name, index);
+	uint64_t index = key.index;
+	if (key.name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
+	bgame_ui_id_t id = bgame_ui_make_id(ui_scope->id, key.name, index);
 
 	bgame_ui_node_t* node = bgame_alloc_for_frame(sizeof(bgame_ui_node_t), _Alignof(bgame_ui_node_t));
 	*node = (bgame_ui_node_t){
 		.id = id,
 		.index = index,
 		.loc = loc,
-		.decl = *element,
 		.parent = ui_open,
 		.prev_sibling = ui_open->last_child,
 		.depth = ui_open->depth + 1,
 	};
-	if (element->name != NULL) {
-		size_t len = strlen(element->name);
+	if (key.name != NULL) {
+		size_t len = strlen(key.name);
 		char* copy = bgame_alloc_for_frame(len + 1, _Alignof(char));
-		memcpy(copy, element->name, len + 1);
+		memcpy(copy, key.name, len + 1);
 		node->name = copy;
 	}
 
@@ -279,6 +278,30 @@ bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element) {
 	}
 	ui_open->last_child = node;
 	++tree->num_nodes;
+
+	bool is_new;
+	bgame_ui_node_t** slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
+	if (is_new) {
+		*slot = node;
+	} else if (!ui_duplicate_reported) {
+		BFMT_ERROR("Duplicate UI element ", key.name != NULL ? key.name : "(anonymous)", " #", index);
+		ui_duplicate_reported = true;
+	}
+
+	push_scope(id, node);
+	ui_open = node;
+	return id;
+}
+
+bgame_ui_id_t
+bgame_ui__configure(const bgame_ui_element_t* element) {
+	if (ui_scope == NULL || ui_open == NULL || ui_open->parent == NULL) {
+		BFMT_ERROR("Element configured without one begun");
+		return 0;
+	}
+	bgame_ui_tree_t* tree = ui_current;
+	bgame_ui_node_t* node = ui_open;
+	node->decl = *element;
 
 	if (!node_in_flow(node)) {
 		if (tree->last_floating != NULL) {
@@ -297,26 +320,12 @@ bgame_ui_open_at(bgame_ui_loc_t loc, const bgame_ui_element_t* element) {
 	if (element->content.draw != NULL) { ++tree->num_content; }
 	if (node_clips(node)) { ++tree->num_clip; }
 
-	bool is_new;
-	bgame_ui_node_t** slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
-	if (is_new) {
-		*slot = node;
-	} else if (!ui_duplicate_reported) {
-		BFMT_ERROR(
-			"Duplicate UI element ", element->name != NULL ? element->name : "(anonymous)",
-			" #", index
-		);
-		ui_duplicate_reported = true;
-	}
-
 	if (element->focus.kind != BGAME_UI_FOCUS_NONE) {
-		bgame_ui_focus_open(id, &element->focus);
+		bgame_ui_focus_open(node->id, &element->focus);
 	}
 
-	push_scope(id, node);
-	ui_open = node;
 	ui_block_pending = true;
-	return id;
+	return node->id;
 }
 
 bool
