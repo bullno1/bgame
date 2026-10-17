@@ -41,6 +41,7 @@ typedef struct {
 
 typedef BHAMT_TABLE(ui_state_key_t, void*) ui_state_table_t;
 typedef BHAMT_TABLE(const void*, ui_ctx_stack_t) ui_ctx_stacks_t;
+typedef BHAMT_TABLE(const char*, const char*) ui_string_table_t;
 
 // Trees live in the frame arena, which outlives a reload; a change to the node struct
 // needs a restart, like a component size.
@@ -51,6 +52,7 @@ BGAME_VAR(ui_state_table_t, ui_previous_states) = { 0 };
 BGAME_VAR(ui_state_table_t, ui_current_states) = { 0 };
 // Plain statics on purpose: rebuilt by every bgame_ui_begin
 static ui_ctx_stacks_t ui_ctx_stacks = { 0 };
+static ui_string_table_t ui_frame_strings = { 0 };
 static ui_scope_t ui_root_scope = { 0 };
 static ui_scope_t* ui_scope = NULL;
 static bgame_ui_node_t* ui_open = NULL;
@@ -247,6 +249,21 @@ node_clips(const bgame_ui_node_t* node) {
 	return node->decl.clip.horizontal || node->decl.clip.vertical;
 }
 
+// Copy a string into the frame arena so it survives hot reload
+static const char*
+frame_strcpy(const char* str) {
+	if (str == NULL) { return NULL; }
+	bool is_new;
+	const char** slot = bhamt_upsert_ex(&ui_frame_strings, str, bgame_frame_arena(), &is_new);
+	if (is_new) {
+		size_t len = strlen(str);
+		char* copy = bgame_alloc_for_frame(len + 1, _Alignof(char));
+		memcpy(copy, str, len + 1);
+		*slot = copy;
+	}
+	return *slot;
+}
+
 bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	if (ui_scope == NULL) {
@@ -264,7 +281,7 @@ bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	*node = (bgame_ui_node_t){
 		.id = id,
 		.index = index,
-		.loc = loc,
+		.loc = { frame_strcpy(loc.file), loc.line },
 		.parent = ui_open,
 		.prev_sibling = ui_open->last_child,
 		.depth = ui_open->depth + 1,
@@ -307,6 +324,7 @@ bgame_ui__configure(const bgame_ui_element_t* element) {
 	bgame_ui_tree_t* tree = ui_current;
 	bgame_ui_node_t* node = ui_open;
 	node->decl = *element;
+	node->decl.content.debug_name = frame_strcpy(element->content.debug_name);
 
 	if (!node_in_flow(node)) {
 		if (tree->last_floating != NULL) {
@@ -1109,6 +1127,7 @@ bgame_ui_begin(const bgame_ui_frame_t* frame) {
 
 	// Reset context stacks
 	bhamt_init(&ui_ctx_stacks, BGAME_FN_WRAPPER(ptr_hash), BGAME_FN_WRAPPER(ptr_eq));
+	bhamt_init(&ui_frame_strings, BGAME_FN_WRAPPER(ptr_hash), BGAME_FN_WRAPPER(ptr_eq));
 
 	ui_root_scope = (ui_scope_t){ .node = &tree->root };
 	ui_scope = &ui_root_scope;
