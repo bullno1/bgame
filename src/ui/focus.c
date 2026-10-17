@@ -75,6 +75,20 @@ is_enabled(const focus_node_t* node) {
 	return true;
 }
 
+/*! Whether the element or an ancestor was exiting last frame; walks the UI tree, since the one leaving need not be a focus node */
+static bool
+is_leaving(bgame_ui_id_t id) {
+	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
+	if (tree == NULL || id == 0) { return false; }
+	bgame_ui_node_t* const* slot = bhamt_get(&tree->index, id);
+	for (const bgame_ui_node_t* node = slot != NULL ? *slot : NULL; node != NULL; node = node->parent) {
+		if (node->transition != NULL && node->transition->phase == BGAME_UI_TRANSITION_EXITING) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool
 is_focusable(const focus_node_t* node) {
 	if (node == NULL || node->parent == NULL) { return false; }
@@ -114,6 +128,7 @@ collect_targets(
 ) {
 	for (focus_node_t* child = group->first_child; child != NULL; child = child->next_sibling) {
 		if (child->flags & BGAME_UI_FOCUS_DISABLED) { continue; }
+		if (is_leaving(child->id)) { continue; }
 		if (child != exclude && is_focusable(child)) { out[(*count)++] = child; }
 		if (child->is_group && !(child->flags & BGAME_UI_FOCUS_ENTERABLE)) {
 			collect_targets(child, exclude, out, count);
@@ -267,10 +282,10 @@ find_fallback(void) {
 
 	for (focus_node_t* ancestor = old->parent; ancestor->parent != NULL; ancestor = ancestor->parent) {
 		focus_node_t* survivor = find_node(tree, ancestor->id);
-		if (survivor == NULL) {
+		if (survivor == NULL || is_leaving(ancestor->id)) {
 			if (is_scope(ancestor) && ancestor->restore != 0) {
 				focus_node_t* restored = find_node(tree, ancestor->restore);
-				if (is_focusable(restored)) { return restored; }
+				if (is_focusable(restored) && !is_leaving(restored->id)) { return restored; }
 			}
 			continue;
 		}
@@ -403,7 +418,7 @@ bgame_ui_focus_end(void) {
 	}
 
 	focus_node_t* focused = find_node(tree, state->focused);
-	if (!is_focusable(focused)) {
+	if (!is_focusable(focused) || is_leaving(state->focused)) {
 		focused = find_fallback();
 		state->focused = focused != NULL ? focused->id : 0;
 	}
@@ -536,6 +551,7 @@ bgame_ui_focus_route(uint32_t actions) {
 	focus_tree_t* tree = state->previous;
 	if (tree == NULL) { return false; }
 	set_mode_navigation();
+	if (is_leaving(state->focused)) { return true; }
 
 	bool any = false;
 	focus_node_t* node = find_node(tree, state->focused);
@@ -557,6 +573,7 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
 	focus_tree_t* tree = state->previous;
 	if (tree == NULL) { return false; }
 	set_mode_navigation();
+	if (is_leaving(state->focused)) { return false; }
 
 	focus_node_t* cur = find_node(tree, state->focused);
 	if (!is_focusable(cur)) {
