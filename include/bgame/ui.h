@@ -109,9 +109,11 @@ typedef enum {
 typedef struct {
 	bgame_ui_attach_t attach;
 	bgame_ui_id_t target;
-	/*! The point of this box that sits on @ref origin of what it attaches to */
-	bgame_ui_align2_t anchor;
-	bgame_ui_align2_t origin;
+	/*! How to attach the element to its target */
+	struct {
+		bgame_ui_align2_t element;
+		bgame_ui_align2_t target;
+	} attach_points;
 	CF_V2 offset;
 	/*! Higher draws later, ties in declaration order */
 	int16_t z;

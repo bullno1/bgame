@@ -657,11 +657,6 @@ layout_subtree(bgame_ui_node_t* node, bgame_ui_size_t available) {
 	apply_node_aspect(node);
 }
 
-static float
-align_point(bgame_ui_align_t align, float size) {
-	return align_offset(align, size);
-}
-
 static void
 layout_floating(bgame_ui_tree_t* tree, bgame_ui_node_t* node) {
 	const bgame_ui_floating_t* floating = &node->decl.floating;
@@ -688,12 +683,12 @@ layout_floating(bgame_ui_tree_t* tree, bgame_ui_node_t* node) {
 
 	layout_subtree(node, (bgame_ui_size_t){ target.width, target.height });
 	float x = target.x
-		+ align_point(floating->origin.x, target.width)
-		- align_point(floating->anchor.x, node->size[AXIS_X])
+		+ align_offset(floating->attach_points.target.x, target.width)
+		- align_offset(floating->attach_points.element.x, node->size[AXIS_X])
 		+ floating->offset.x;
 	float y = target.y
-		+ align_point(floating->origin.y, target.height)
-		- align_point(floating->anchor.y, node->size[AXIS_Y])
+		+ align_offset(floating->attach_points.target.y, target.height)
+		- align_offset(floating->attach_points.element.y, node->size[AXIS_Y])
 		+ floating->offset.y;
 	place_node(node, x, y);
 }
