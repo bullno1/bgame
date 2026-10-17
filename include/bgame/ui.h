@@ -380,6 +380,10 @@ bgame_ui_transition_state(bgame_ui_id_t id);
 const bgame_ui_id_t*
 bgame_ui_over(int* count);
 
+/*! The delta time of the frame begun, as given to @ref bgame_ui_begin */
+float
+bgame_ui_dt(void);
+
 /*! Pixels, y down, from a UI rectangle to CF's y-up drawing space */
 static inline CF_Aabb
 bgame_ui_aabb(bgame_ui_rect_t rect) {

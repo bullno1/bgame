@@ -216,6 +216,11 @@ bgame_ui_over(int* count) {
 	return ui_current->over;
 }
 
+float
+bgame_ui_dt(void) {
+	return ui_current != NULL ? ui_current->input.dt : 0.f;
+}
+
 const bgame_ui_command_t*
 bgame_ui_commands(int* count) {
 	// The frame just ended is the one to draw
