@@ -30,6 +30,8 @@ set(SOURCES
 	"src/ui/sprite.c"
 	"src/ui/fill.c"
 	"src/ui/focus.c"
+	"src/ui/modal.c"
+	"src/ui/presence.c"
 	"src/ui/render.c"
 	"src/ui/inspect.c"
 	"src/ui/inspect_imgui.c"
