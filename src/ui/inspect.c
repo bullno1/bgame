@@ -6,10 +6,13 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
+#include <SDL3/SDL_stdinc.h>
+// The web has no processes to spawn
+#ifndef __EMSCRIPTEN__
 #include <SDL3/SDL_process.h>
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_error.h>
-#include <SDL3/SDL_stdinc.h>
+#endif
 
 /*! The editor command, with `{file}` and `{line}` */
 #ifndef BGAME_UI_EDITOR_ENV
@@ -134,6 +137,8 @@ bgame_ui_inspect_edit(bgame_ui_id_t id) {
 
 // Jumping to the code {{{
 
+#ifndef __EMSCRIPTEN__
+
 /*! `{file}` and `{line}` replaced, in the frame arena */
 static const char*
 expand_template(const char* arg, size_t len, bgame_ui_loc_t loc) {
@@ -187,12 +192,15 @@ split_command(const char* text, size_t size, bgame_ui_loc_t loc, const char** ar
 	return count;
 }
 
+#endif
+
 /*! Logs the location, then runs the editor command when the user set one */
 static void
 open_in_editor(bgame_ui_loc_t loc) {
 	if (loc.file == NULL) { return; }
 	BFMT_INFO(loc.file, ":", loc.line);
 
+#ifndef __EMSCRIPTEN__
 	const char* text = SDL_getenv(BGAME_UI_EDITOR_ENV);
 	if (text == NULL) { return; }
 	const char* args[MAX_EDITOR_ARGS];
@@ -209,6 +217,7 @@ open_in_editor(bgame_ui_loc_t loc) {
 		return;
 	}
 	SDL_DestroyProcess(process);
+#endif
 }
 
 static void
