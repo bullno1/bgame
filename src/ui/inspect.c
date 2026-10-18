@@ -77,19 +77,23 @@ bgame_ui_inspect_picked(void) {
 	return ui_inspect_picked;
 }
 
-/*! The innermost element under the pointer, or the innermost named one */
+/*! The innermost element under the pointer, or the innermost named one, or the widget it is internal to */
 static bgame_ui_id_t
 pick_candidate(const bgame_ui_id_t* over, int num_over) {
-	if (!(ui_inspect_pick_flags & BGAME_UI_PICK_NAMED)) {
-		return num_over > 0 ? over[num_over - 1] : 0;
-	}
 	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
 	if (tree == NULL) { return 0; }
-	for (int i = num_over - 1; i >= 0; --i) {
+	bool named = ui_inspect_pick_flags & BGAME_UI_PICK_NAMED;
+	const bgame_ui_node_t* found = NULL;
+	for (int i = num_over - 1; i >= 0 && found == NULL; --i) {
 		bgame_ui_node_t* const* slot = bhamt_get(&tree->index, over[i]);
-		if (slot != NULL && (*slot)->name != NULL) { return over[i]; }
+		if (slot != NULL && (!named || (*slot)->name != NULL)) { found = *slot; }
 	}
-	return 0;
+	if (found == NULL) { return 0; }
+	if (!(ui_inspect_pick_flags & BGAME_UI_PICK_DEEP)) {
+		// Up to the element the code that placed the widget declared: its root, or an outer widget's
+		while (found->internal && found->parent != NULL) { found = found->parent; }
+	}
+	return found->id;
 }
 
 bool
@@ -309,6 +313,8 @@ fill_node(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth, 
 		.name = node->name,
 		.index = node->index,
 		.loc = node->loc,
+		.def = node->def,
+		.internal = node->internal,
 		.decl = &node->decl,
 		.depth = depth,
 		.num_descendants = num_descendants,

@@ -33,6 +33,8 @@ typedef enum {
 	 *   * vscode: `code --goto {file}:{line}`
 	 */
 	BGAME_UI_PICK_EDIT          = 1 << 4,
+	/*! Pick a widget's internal elements rather than the widget */
+	BGAME_UI_PICK_DEEP          = 1 << 5,
 } bgame_ui_pick_flag_t;
 
 /*! Select what is under the pointer, every frame, until stopped or a flag ends it. The selection is highlighted meanwhile. */
@@ -65,6 +67,10 @@ bgame_ui_inspect_select(bgame_ui_id_t id);
 bool
 bgame_ui_inspect_edit(bgame_ui_id_t id);
 
+/*! @ref bgame_ui_inspect_edit for a location, false for one without a file */
+bool
+bgame_ui_inspect_open(bgame_ui_loc_t loc);
+
 typedef struct bgame_ui_inspect_node_s bgame_ui_inspect_node_t;
 
 /*! An element of last frame's tree */
@@ -73,7 +79,12 @@ struct bgame_ui_inspect_node_s {
 	/*! NULL for an anonymous element and the root */
 	const char* name;
 	uint64_t index;
+	/*! Where the element is placed: the caller's line for a widget's root */
 	bgame_ui_loc_t loc;
+	/*! Where a widget opens it, NULL file for an element placed where it is declared */
+	bgame_ui_loc_t def;
+	/*! Declared by a widget's own code, so a pick lands on the widget unless deep */
+	bool internal;
 	const bgame_ui_element_t* decl;
 	/*! 0 for the root */
 	int depth;

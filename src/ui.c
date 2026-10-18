@@ -283,6 +283,11 @@ frame_strcpy(const char* str) {
 
 bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
+	return bgame_ui__begin_at((bgame_ui_loc_t){ 0 }, loc, key, false);
+}
+
+bgame_ui_id_t
+bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key, bool block) {
 	if (ui_scope == NULL) {
 		BFMT_ERROR("Element opened outside of a UI frame");
 		return 0;
@@ -302,6 +307,9 @@ bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 		.id = id,
 		.index = index,
 		.loc = { frame_strcpy(loc.file), loc.line },
+		.def = { frame_strcpy(def.file), def.line },
+		.widget = block,
+		.internal = ui_open->widget || ui_open->internal,
 		.parent = ui_open,
 		.prev_sibling = ui_open->last_child,
 		.depth = ui_open->depth + 1,

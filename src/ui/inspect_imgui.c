@@ -6,12 +6,12 @@
 static bgame_ui_id_t ui_inspect_imgui_hovered = 0;
 
 static void
-draw_loc(const char* label, bgame_ui_id_t id, bgame_ui_loc_t loc) {
+draw_loc(const char* label, bgame_ui_loc_t loc) {
 	if (loc.file == NULL) { return; }
 	ImGui_LabelText(label, "%s:%d", loc.file, loc.line);
 	ImGui_SameLine();
 	ImGui_PushIDPtr(label);
-	if (ImGui_Button("Open")) { bgame_ui_inspect_edit(id); }
+	if (ImGui_Button("Open")) { bgame_ui_inspect_open(loc); }
 	ImGui_PopID();
 }
 
@@ -30,6 +30,8 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 	if (node->first_child == NULL) { flags |= ImGuiTreeNodeFlags_Leaf; }
 	if (node->id == selected) { flags |= ImGuiTreeNodeFlags_Selected; }
 
+	// A widget's internals are dimmed, as a pick skips them
+	if (node->internal) { ImGui_PushStyleColorImVec4(ImGuiCol_Text, *ImGui_GetStyleColorVec4(ImGuiCol_TextDisabled)); }
 	// The id is the tree key, since the node itself is new every frame
 	bool open = ImGui_TreeNodeExPtr(
 		(const void*)(uintptr_t)node->id, flags,
@@ -37,6 +39,7 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 		node->name != NULL ? node->name : "(anonymous)", node->index,
 		content_name(node->decl)
 	);
+	if (node->internal) { ImGui_PopStyleColor(); }
 	if (ImGui_IsItemHovered(0)) { ui_inspect_imgui_hovered = node->id; }
 	if (ImGui_IsItemClicked()) { bgame_ui_inspect_select(selected == node->id ? 0 : node->id); }
 
@@ -57,7 +60,8 @@ static void
 draw_details(const bgame_ui_inspect_node_t* node) {
 	const bgame_ui_element_t* decl = node->decl;
 	ImGui_SeparatorText(node->name != NULL ? node->name : "(anonymous)");
-	draw_loc("Source", node->id, node->loc);
+	draw_loc("Source", node->loc);
+	draw_loc("Defined", node->def);
 	ImGui_LabelText("Id", "%016" PRIx64, node->id);
 	ImGui_LabelText("Bounds", "%.1f, %.1f  %.1f x %.1f", node->bounds.x, node->bounds.y, node->bounds.width, node->bounds.height);
 	ImGui_LabelText("Visible", "%.1f, %.1f  %.1f x %.1f", node->clip.x, node->clip.y, node->clip.width, node->clip.height);

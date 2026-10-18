@@ -291,6 +291,15 @@ bgame_ui__key_of_name(const char* name) {
 bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key);
 
+/**
+ * @ref bgame_ui__begin for an element a widget places at its caller's @p loc, opened at @p def
+ *
+ * With @p block, the block that follows is the widget's own code and what it declares
+ * is internal to the widget.
+ */
+bgame_ui_id_t
+bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key, bool block);
+
 /*! Give the begun element its declaration, returning its id */
 bgame_ui_id_t
 bgame_ui__configure(const bgame_ui_element_t* element);
@@ -298,11 +307,15 @@ bgame_ui__configure(const bgame_ui_element_t* element);
 /**
  * Open an element, returning its id: `bgame_ui_open_at(loc, "Name", &element)`
  *
- * The declaration is evaluated inside the element, so state looked up while
- * building it is the element's own.
+ * For a widget placing its root at a location its caller gave, see @ref BUI_HERE: the
+ * inspector reports this line as where the element is defined.
+ * The declaration is evaluated inside the element.
  */
-#define bgame_ui_open_at(LOC, KEY, ...) \
-	(bgame_ui__begin((LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(__VA_ARGS__))
+#define bgame_ui_open_at bgame_ui__open_at_line(__LINE__)
+#define bgame_ui__open_at_line(LINE) \
+	(bgame_ui__begin_at((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_at_args
+#define bgame_ui__open_at_args(LOC, KEY, ...) \
+	(LOC), BUI__KEY_OF(KEY), false), bgame_ui__configure(__VA_ARGS__))
 
 void
 bgame_ui_close(void);
@@ -315,10 +328,10 @@ bgame_ui__block(void);
  *
  * `FN` must be a function, not a macro.
  * `#define my_widget BUI_CALL_WITH_LOC(my_widget_at)` expands `my_widget(x, y)` into
- * `my_widget_at(BUI_HERE(), x, y)`.
+ * `my_widget_at(BUI_HERE(), x, y)` and `my_widget()` into `my_widget_at(BUI_HERE())`.
  */
-#define BUI_CALL_WITH_LOC(FN) FN(BUI_HERE(), BUI__CALL_WITH_LOC_ARGS
-#define BUI__CALL_WITH_LOC_ARGS(...) __VA_ARGS__)
+#define BUI_CALL_WITH_LOC(FN) FN(BUI_HERE() BUI__CALL_WITH_LOC_ARGS
+#define BUI__CALL_WITH_LOC_ARGS(...) __VA_OPT__(,) __VA_ARGS__)
 
 /**
  * @ref BUI_CALL_WITH_LOC for a function taking a config struct, as a braced list or a variable
@@ -337,13 +350,18 @@ bgame_ui__block(void);
 
 #define BUI__ELEM(...) ((bgame_ui_element_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
 
-/*! `BUI` placed at a location given to the widget by its caller, see @ref BUI_HERE */
-#define BUI_AT(LOC, KEY, ...) \
-	for ( \
-		bgame_ui__begin((LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); \
-		bgame_ui__block(); \
-		bgame_ui_close() \
-	)
+/**
+ * `BUI` placed at a location given to the widget by its caller, see @ref BUI_HERE
+ *
+ * The nested block is the widget's own code, so what it declares is internal to the widget.
+ * A pick on an internal element lands on this element instead.
+ * A deep pick (@ref BGAME_UI_PICK_DEEP) bypasses this rule.
+ */
+#define BUI_AT BUI__AT_LINE(__LINE__)
+#define BUI__AT_LINE(LINE) \
+	for (bgame_ui__begin_at((bgame_ui_loc_t){ __FILE__, LINE }, BUI__AT_ARGS
+#define BUI__AT_ARGS(LOC, KEY, ...) \
+	(LOC), BUI__KEY_OF(KEY), true), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
 
 /*! `BUI("X", { .layout = ... }) { children }`, placed at the line of `BUI` */
 #define BUI BUI__AT(__LINE__)

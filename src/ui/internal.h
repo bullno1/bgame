@@ -22,6 +22,12 @@ struct bgame_ui_node_s {
 	const char* name;
 	uint64_t index;
 	bgame_ui_loc_t loc;
+	/*! Where a widget opens it, NULL file for an element placed where it is declared */
+	bgame_ui_loc_t def;
+	/*! Its block is a widget's own code */
+	bool widget;
+	/*! Declared by a widget's own code */
+	bool internal;
 	bgame_ui_element_t decl;
 
 	bgame_ui_node_t* parent;
