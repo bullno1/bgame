@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <SDL3/SDL_stdinc.h>
-// The web has no processes to spawn
-#ifndef __EMSCRIPTEN__
+// The web has no processes to spawn: the page asks the server that serves it
+#ifdef __EMSCRIPTEN__
+#include <emscripten/em_js.h>
+#else
 #include <SDL3/SDL_process.h>
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_error.h>
@@ -135,8 +137,14 @@ bgame_ui_inspect_edit(bgame_ui_id_t id) {
 	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
 	if (tree == NULL || id == 0) { return false; }
 	bgame_ui_node_t* const* slot = bhamt_get(&tree->index, id);
-	if (slot == NULL || (*slot)->loc.file == NULL) { return false; }
-	open_in_editor((*slot)->loc);
+	if (slot == NULL) { return false; }
+	return bgame_ui_inspect_open((*slot)->loc);
+}
+
+bool
+bgame_ui_inspect_open(bgame_ui_loc_t loc) {
+	if (loc.file == NULL) { return false; }
+	open_in_editor(loc);
 	return true;
 }
 
@@ -199,6 +207,20 @@ split_command(const char* text, size_t size, bgame_ui_loc_t loc, const char** ar
 	return count;
 }
 
+#else
+
+/*! The dev server (`cmd/web/run`) runs the editor command for the page */
+EM_JS(void, bgame_ui__request_editor, (const char* file, int line), {
+	var url = '/__open-in-editor?file=' + encodeURIComponent(UTF8ToString(file)) + '&line=' + line;
+	fetch(url, { method: 'POST' }).then(function (response) {
+		if (!response.ok) {
+			response.text().then(function (text) { console.warn('Could not open the editor: ' + text); });
+		}
+	}).catch(function (error) {
+		console.warn('Could not open the editor: ' + error);
+	});
+})
+
 #endif
 
 /*! Logs the location, then runs the editor command when the user set one */
@@ -207,7 +229,9 @@ open_in_editor(bgame_ui_loc_t loc) {
 	if (loc.file == NULL) { return; }
 	BFMT_INFO(loc.file, ":", loc.line);
 
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+	bgame_ui__request_editor(loc.file, loc.line);
+#else
 	const char* text = SDL_getenv(BGAME_UI_EDITOR_ENV);
 	if (text == NULL) { return; }
 	const char* args[MAX_EDITOR_ARGS];
