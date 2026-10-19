@@ -113,7 +113,7 @@ SDL_AppInit(void** appstate, int argc, char* argv[]) {
 	bgame_loader.monitor = bresmon_create(NULL);
 	bresmon_watch(bgame_loader.monitor, remodule_path(bgame_loader.module), reload_module, bgame_loader.module);
 
-	bgame_loader.interface.app.init(argc, (const char**)argv);
+	bgame_loader.interface.init(&bgame_loader.interface);
 
 	return SDL_APP_CONTINUE;
 }
@@ -155,7 +155,7 @@ SDL_AppQuit(void* appstate, SDL_AppResult result) {
 	// SDL_AppInit failed before loading the module
 	if (bgame_loader.module == NULL) { return; }
 
-	bgame_loader.interface.app.cleanup();
+	bgame_loader.interface.cleanup(&bgame_loader.interface);
 
 	bresmon_destroy(bgame_loader.monitor);
 	remodule_unload(bgame_loader.module);

@@ -17,6 +17,27 @@ bgame_frame_allocator_next_frame(void);
 
 const char* bgame_entry_file = __FILE__;
 
+// Never persisted: every call that matters sets it first
+static bgame_app_state_t bgame_app_state_value = BGAME_APP_INITIALIZING;
+
+bgame_app_state_t
+bgame_app_state(void) {
+	return bgame_app_state_value;
+}
+
+static void
+bgame_app_init(bgame_app_t* app, bgame_app_state_t state, int argc, const char** argv) {
+	bgame_app_state_value = state;
+	app->init(argc, argv);
+	bgame_app_state_value = BGAME_APP_RUNNING;
+}
+
+static void
+bgame_app_cleanup(bgame_app_t* app) {
+	bgame_app_state_value = BGAME_APP_CLEANING_UP;
+	app->cleanup();
+}
+
 /*! The length of the project root's prefix in the entry file, 0 when it is not that deep; the same walk as blog's */
 static size_t
 project_prefix_len(const char* entry) {
@@ -56,9 +77,19 @@ static barray(bgame_reload_blocker_t) bgame_reload_blockers = NULL;
 static bgame_reload_blocker_t bgame_reload_vetoes[BGAME_MAX_RELOAD_VETOES];
 
 static void
+bgame_init(bgame_loader_interface_t* interface) {
+	bgame_app_init(&interface->app, BGAME_APP_INITIALIZING, interface->argc, interface->argv);
+}
+
+static void
 bgame_update(bgame_loader_interface_t* interface) {
 	bgame_frame_allocator_next_frame();
 	interface->app.update();
+}
+
+static void
+bgame_cleanup(bgame_loader_interface_t* interface) {
+	bgame_app_cleanup(&interface->app);
 }
 
 static bool
@@ -152,7 +183,9 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 			bgame_on_load();
 
 			loader_interface->app = app;
+			loader_interface->init = bgame_init;
 			loader_interface->update = bgame_update;
+			loader_interface->cleanup = bgame_cleanup;
 			loader_interface->is_reload_blocked = bgame_is_reload_blocked;
 			loader_interface->explain_reload_blocked = bgame_explain_reload_blocked;
 
@@ -185,7 +218,9 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 			bgame_after_reload();
 
 			loader_interface->app = app;
+			loader_interface->init = bgame_init;
 			loader_interface->update = bgame_update;
+			loader_interface->cleanup = bgame_cleanup;
 			loader_interface->is_reload_blocked = bgame_is_reload_blocked;
 			loader_interface->explain_reload_blocked = bgame_explain_reload_blocked;
 
@@ -197,7 +232,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata) {
 			BLOG_INFO("App reloaded");
 
 			BLOG_INFO("Reinitializing");
-			app.init(loader_interface->argc, loader_interface->argv);
+			bgame_app_init(&app, BGAME_APP_REINITIALIZING, loader_interface->argc, loader_interface->argv);
 			BLOG_INFO("Reinitialized");
 			break;
 	}
@@ -212,7 +247,7 @@ SDL_AppResult
 bgame_static(bgame_app_t* app, int argc, const char** argv) {
 	bgame_on_load();
 
-	app->init(argc, argv);
+	bgame_app_init(app, BGAME_APP_INITIALIZING, argc, argv);
 	return SDL_APP_CONTINUE;
 }
 
@@ -229,7 +264,7 @@ SDL_AppIterate(bgame_app_t* app) {
 void SDLCALL
 SDL_AppQuit(bgame_app_t* app, SDL_AppResult result) {
 	(void)result;
-	app->cleanup();
+	bgame_app_cleanup(app);
 
 	bgame_on_unload();
 }

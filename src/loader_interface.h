@@ -13,7 +13,9 @@ typedef struct bgame_loader_interface_s {
 	void (*explain_reload_blocked)(struct bgame_loader_interface_s* interface);
 
 	bgame_app_t app;
+	void (*init)(struct bgame_loader_interface_s* interface);
 	void (*update)(struct bgame_loader_interface_s* interface);
+	void (*cleanup)(struct bgame_loader_interface_s* interface);
 	bsfn_ctx_t* bsfn;
 } bgame_loader_interface_t;
 
