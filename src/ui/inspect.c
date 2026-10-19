@@ -325,6 +325,7 @@ fill_node(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth, 
 		.num_descendants = num_descendants,
 		.first_child = num_descendants > 0 ? out + 1 : NULL,
 		.bounds = node->bounds,
+		.content = node->content,
 		.clip = node->clip,
 		.transition = node->transition != NULL ? &node->transition_state : NULL,
 	};

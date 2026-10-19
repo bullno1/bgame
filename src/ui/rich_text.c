@@ -96,14 +96,14 @@ bgame_ui_render_rich_text(const bgame_ui_box_t* box, void* userdata) {
 	const bgame_ui_text_outline_t* outline = &draw->style.outline;
 	const bgame_ui_text_shadow_t* shadow = &draw->style.shadow;
 
-	float slack = box->bounds.width - draw->size.x;
+	float slack = box->content.width - draw->size.x;
 	float justify = 0.f;
 	switch (draw->justify) {
 		case BGAME_UI_RICH_TEXT_JUSTIFY_LEFT: justify = 0.f; break;
 		case BGAME_UI_RICH_TEXT_JUSTIFY_CENTER: justify = 0.5f; break;
 		case BGAME_UI_RICH_TEXT_JUSTIFY_RIGHT: justify = 1.f; break;
 	}
-	CF_V2 pos = { box->bounds.x + slack * justify, -box->bounds.y };
+	CF_V2 pos = { box->content.x + slack * justify, -box->content.y };
 	bool outlined = outline->color.a > 0.f && outline->thickness > 0.f;
 
 	bgame_ui_push_text_config(draw);

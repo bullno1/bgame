@@ -72,6 +72,7 @@ draw_details(const bgame_ui_inspect_node_t* tree, const bgame_ui_inspect_node_t*
 	}
 	ImGui_LabelText("Id", "%016" PRIx64, node->id);
 	ImGui_LabelText("Bounds", "%.1f, %.1f  %.1f x %.1f", node->bounds.x, node->bounds.y, node->bounds.width, node->bounds.height);
+	ImGui_LabelText("Content", "%.1f, %.1f  %.1f x %.1f", node->content.x, node->content.y, node->content.width, node->content.height);
 	ImGui_LabelText("Visible", "%.1f, %.1f  %.1f x %.1f", node->clip.x, node->clip.y, node->clip.width, node->clip.height);
 	draw_sizing("Width", &decl->layout.sizing.width);
 	draw_sizing("Height", &decl->layout.sizing.height);

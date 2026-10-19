@@ -707,6 +707,12 @@ place_node(bgame_ui_node_t* node, float x, float y) {
 		BMAX(node->size[AXIS_X] - node_padding_sum(node, AXIS_X), 0.f),
 		BMAX(node->size[AXIS_Y] - node_padding_sum(node, AXIS_Y), 0.f),
 	};
+	node->content = (bgame_ui_rect_t){
+		x + node_padding_start(node, AXIS_X),
+		y + node_padding_start(node, AXIS_Y),
+		inner[AXIS_X],
+		inner[AXIS_Y],
+	};
 	float block = children_extent(node, along, false);
 	float cursor = node->pos[along] + node_padding_start(node, along) + align_offset(align[along], inner[along] - block);
 	float offset[2] = { 0.f, 0.f };
@@ -820,8 +826,22 @@ translate_subtree(bgame_ui_node_t* node, float dx, float dy) {
 	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
 		child->bounds.x += dx;
 		child->bounds.y += dy;
+		child->content.x += dx;
+		child->content.y += dy;
 		translate_subtree(child, dx, dy);
 	}
+}
+
+// The content box follows the displayed one, since a draw may position itself by either
+static void
+display_node_at(bgame_ui_node_t* node, bgame_ui_rect_t displayed) {
+	node->bounds = displayed;
+	node->content = (bgame_ui_rect_t){
+		displayed.x + node_padding_start(node, AXIS_X),
+		displayed.y + node_padding_start(node, AXIS_Y),
+		BMAX(displayed.width - node_padding_sum(node, AXIS_X), 0.f),
+		BMAX(displayed.height - node_padding_sum(node, AXIS_Y), 0.f),
+	};
 }
 
 static void
@@ -927,7 +947,7 @@ run_transitions(bgame_ui_tree_t* tree) {
 		node->unhoverable = rec->phase == BGAME_UI_TRANSITION_ENTERING || rec->phase == BGAME_UI_TRANSITION_EXITING;
 
 		translate_subtree(node, rec->displayed.x - target.x, rec->displayed.y - target.y);
-		node->bounds = rec->displayed;
+		display_node_at(node, rec->displayed);
 		switch (rec->phase) {
 			case BGAME_UI_TRANSITION_ENTERING: make_node_pose(node, &tr->enter, 1.f - t); break;
 			case BGAME_UI_TRANSITION_EXITING: make_node_pose(node, &tr->exit, t); break;
@@ -966,6 +986,7 @@ node_box(const bgame_ui_node_t* node) {
 	return (bgame_ui_box_t){
 		.id = node->id,
 		.bounds = node->bounds,
+		.content = node->content,
 		.clip = node->clip,
 		.transition = node->transition != NULL ? &node->transition_state : NULL,
 		.userdata = node->decl.content.userdata,

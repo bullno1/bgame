@@ -177,6 +177,8 @@ typedef struct {
 typedef struct {
 	bgame_ui_id_t id;
 	bgame_ui_rect_t bounds;
+	/*! @ref bounds inside the padding: where measured content and children go */
+	bgame_ui_rect_t content;
 	/*! The part of @ref bounds left visible by clipping */
 	bgame_ui_rect_t clip;
 	/*! NULL for an element without a transition */

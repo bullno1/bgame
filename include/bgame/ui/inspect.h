@@ -97,6 +97,8 @@ struct bgame_ui_inspect_node_s {
 	/*! NULL for the last child */
 	const bgame_ui_inspect_node_t* next_sibling;
 	bgame_ui_rect_t bounds;
+	/*! @ref bounds inside the padding */
+	bgame_ui_rect_t content;
 	/*! The part of @ref bounds left visible by clipping */
 	bgame_ui_rect_t clip;
 	/*! NULL for an element without a transition */

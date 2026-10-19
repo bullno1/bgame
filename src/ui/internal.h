@@ -47,6 +47,8 @@ struct bgame_ui_node_s {
 	float pos[2];
 	bgame_ui_size_t content_size;
 	bgame_ui_rect_t bounds;
+	/*! The bounds inside the padding */
+	bgame_ui_rect_t content;
 	/*! The visible part of the bounds */
 	bgame_ui_rect_t clip;
 	bool clipped_out;

@@ -25,14 +25,21 @@ scissor_of(bgame_ui_rect_t rect) {
 }
 
 static void
-draw_highlight(bgame_ui_rect_t rect) {
+draw_highlight_rect(bgame_ui_rect_t rect, CF_Color color, float fill_alpha) {
 	CF_Aabb aabb = bgame_ui_aabb(rect);
-	cf_draw_push_color(cf_make_color_rgba_f(1.f, 0.5f, 0.f, 0.25f));
+	cf_draw_push_color(cf_make_color_rgba_f(color.r, color.g, color.b, fill_alpha));
 	cf_draw_box_fill(aabb, 0.f);
 	cf_draw_pop_color();
-	cf_draw_push_color(cf_make_color_rgba_f(1.f, 0.5f, 0.f, 1.f));
+	cf_draw_push_color(color);
 	cf_draw_box(aabb, 1.f, 0.f);
 	cf_draw_pop_color();
+}
+
+/*! The padding in orange, the content in blue over it, as a browser inspector does */
+static void
+draw_highlight(const bgame_ui_box_t* box) {
+	draw_highlight_rect(box->bounds, cf_make_color_rgba_f(1.f, 0.5f, 0.f, 1.f), 0.25f);
+	draw_highlight_rect(box->content, cf_make_color_rgba_f(0.3f, 0.6f, 1.f, 1.f), 0.25f);
 }
 
 void
@@ -89,7 +96,7 @@ bgame_ui_render(void) {
 				}
 				break;
 			case BGAME_UI_CMD_HIGHLIGHT:
-				draw_highlight(command->box.bounds);
+				draw_highlight(&command->box);
 				break;
 		}
 	}
