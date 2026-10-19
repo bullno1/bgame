@@ -108,6 +108,29 @@ bgame_find_scene_by_def(const bgame_scene_def_t* def) {
 	return bgame_empty_scene();
 }
 
+// Index of the entry named so in the stack, -1 when none
+static int
+bgame_find_scene_in_stack(const char* name) {
+	if (name == NULL) { return -1; }
+	for (int i = 0; i <= bgame_scene_mgr.current_scene_index; ++i) {
+		const char* entry_name = bgame_scene_mgr.scene_stack[i].name;
+		if (entry_name != NULL && strcmp(entry_name, name) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+static void
+bgame_cleanup_scene(bgame_scene_reg_t scene) {
+	if (scene.def->cleanup != NULL) {
+		BLOG_INFO("Cleaning up scene `%s`", scene.name);
+		bgame_scene_mgr.scene_state = BGAME_SCENE_CLEANING_UP;
+		scene.def->cleanup();
+	}
+	bgame_zero_scene_vars(scene.name);
+}
+
 static void
 bgame_set_next_scene(const char* name, bgame_scene_arg_t arg, bgame_scene_op_t op) {
 	bgame_scene_entry_t* next = &bgame_scene_mgr.next_scene;
@@ -138,9 +161,13 @@ bgame_reload_scene(void) {
 }
 
 static bool
-bgame_can_push_scene(void) {
+bgame_can_push_scene(const char* name) {
 	if (bgame_scene_mgr.current_scene_index >= BGAME_SCENE_STACK_SIZE - 1) {
 		BLOG_ERROR("Scene stack is full");
+		return false;
+	}
+	if (bgame_find_scene_in_stack(name) >= 0) {
+		BFMT_ERROR("Scene ", name, " is already in the stack, not pushed");
 		return false;
 	}
 	return true;
@@ -148,13 +175,14 @@ bgame_can_push_scene(void) {
 
 void
 bgame__push_scene(const bgame_scene_def_t* def, bgame_scene_arg_t arg) {
-	if (!bgame_can_push_scene()) { return; }
-	bgame_set_next_scene(bgame_find_scene_by_def(def).name, arg, BGAME_PUSH_SCENE);
+	const char* name = bgame_find_scene_by_def(def).name;
+	if (!bgame_can_push_scene(name)) { return; }
+	bgame_set_next_scene(name, arg, BGAME_PUSH_SCENE);
 }
 
 void
 bgame_push_scene_by_name(const char* name) {
-	if (!bgame_can_push_scene()) { return; }
+	if (!bgame_can_push_scene(name)) { return; }
 	bgame_set_next_scene(name, (bgame_scene_arg_t){ 0 }, BGAME_PUSH_SCENE);
 }
 
@@ -201,13 +229,17 @@ bgame_scene_update_internal(bool run_update) {
 			// Update later
 			break;
 		case BGAME_SWITCH_SCENE: {
-			// Cleanup old scene
-			if (current_scene.def->cleanup != NULL) {
-				BLOG_INFO("Cleaning up scene `%s`", current_scene.name);
-				bgame_scene_mgr.scene_state = BGAME_SCENE_CLEANING_UP;
-				current_scene.def->cleanup();
+			// A scene lower in the stack is unwound to, so it never runs twice
+			int target_index = bgame_find_scene_in_stack(bgame_scene_mgr.next_scene.name);
+			while (target_index >= 0 && bgame_scene_mgr.current_scene_index > target_index) {
+				bgame_cleanup_scene(current_scene);
+				*current_entry = (bgame_scene_entry_t){ 0 };
+				current_entry = &bgame_scene_mgr.scene_stack[--bgame_scene_mgr.current_scene_index];
+				current_scene = bgame_scene_mgr.current_scene = bgame_find_scene(current_entry->name);
 			}
-			bgame_zero_scene_vars(current_scene.name);
+
+			// Cleanup old scene
+			bgame_cleanup_scene(current_scene);
 
 			// Change current scene
 			*current_entry = bgame_scene_mgr.next_scene;
@@ -249,13 +281,7 @@ bgame_scene_update_internal(bool run_update) {
 			}
 		} break;
 		case BGAME_POP_SCENE: {
-			// Cleanup current scene
-			if (current_scene.def->cleanup != NULL) {
-				BLOG_INFO("Cleaning up scene `%s`", current_entry->name);
-				bgame_scene_mgr.scene_state = BGAME_SCENE_CLEANING_UP;
-				current_scene.def->cleanup();
-			}
-			bgame_zero_scene_vars(current_scene.name);
+			bgame_cleanup_scene(current_scene);
 			*current_entry = (bgame_scene_entry_t){ 0 };
 
 			// Move back to previous scene

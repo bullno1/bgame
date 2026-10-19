@@ -19,6 +19,7 @@ typedef enum {
 typedef struct bgame_scene_s {
 	void (*init)(void);
 	void (*update)(void);
+	// Runs on a running or a suspended scene alike
 	void (*cleanup)(void);
 
 	void (*suspend)(void);
@@ -93,6 +94,10 @@ typedef struct bgame_scene_arg_s {
 /**
  * Switch to a scene, replacing the current one.
  *
+ * A scene runs at most once in the stack: when it is already lower in the
+ * stack, everything above it and the scene itself are cleaned up, and it
+ * starts anew in its slot.
+ *
  * The last argument, if any, is either a brace initializer or a value of
  * `scene_<NAME>_arg_t`. It is copied and stays readable through
  * @ref bgame_scene_arg for the scene's whole life, zeroed when none is given.
@@ -109,6 +114,7 @@ typedef struct bgame_scene_arg_s {
 /**
  * Suspend the current scene and run another on top of it.
  *
+ * Refused with an error for a scene already in the stack; switch to it instead.
  * The argument follows @ref bgame_switch_scene.
  */
 #define bgame_push_scene(NAME, ...) \
