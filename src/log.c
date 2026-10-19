@@ -12,7 +12,7 @@ void
 bgame_log_init(void) {
 	blog_init(&(blog_options_t){
 		.current_filename = bgame_entry_file,
-		.current_depth_in_project = 1,
+		.current_depth_in_project = BGAME_ENTRY_DEPTH_IN_PROJECT,
 	});
 
 	bgame_log_options.file = stderr;

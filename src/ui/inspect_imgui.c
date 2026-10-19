@@ -1,4 +1,5 @@
 #include <bgame/ui/inspect.h>
+#include <bgame/entrypoint.h>
 #include <dcimgui.h>
 #include <inttypes.h>
 
@@ -8,7 +9,7 @@ static bgame_ui_id_t ui_inspect_imgui_hovered = 0;
 static void
 draw_loc(const char* label, bgame_ui_loc_t loc) {
 	if (loc.file == NULL) { return; }
-	ImGui_LabelText(label, "%s:%d", loc.file, loc.line);
+	ImGui_LabelText(label, "%s:%d", bgame_project_file(loc.file), loc.line);
 	ImGui_SameLine();
 	ImGui_PushIDPtr(label);
 	if (ImGui_Button("Open")) { bgame_ui_inspect_open(loc); }

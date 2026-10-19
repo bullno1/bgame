@@ -12,6 +12,14 @@ extern const char* bgame_entry_file;
 	BGAME_ENTRYPOINT(bgame_app) \
 	bgame_app_t bgame_app =
 
+/**
+ * A source file's path for display
+ *
+ * Relative to the project root when under it, as given otherwise.
+ */
+const char*
+bgame_project_file(const char* file);
+
 #if BGAME_RELOADABLE
 
 #define BGAME_ENTRYPOINT(APP) \

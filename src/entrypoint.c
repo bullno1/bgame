@@ -1,6 +1,7 @@
 #include "internal.h"
 #include <bgame/reloadable.h>
 #include <bgame/allocator.h>
+#include <string.h>
 #include <bmacro.h>
 #include <barray.h>
 #include <blog.h>
@@ -15,6 +16,32 @@ extern void
 bgame_frame_allocator_next_frame(void);
 
 const char* bgame_entry_file = __FILE__;
+
+/*! The length of the project root's prefix in the entry file, 0 when it is not that deep; the same walk as blog's */
+static size_t
+project_prefix_len(const char* entry) {
+	int depth = BGAME_ENTRY_DEPTH_IN_PROJECT + 1;
+	int i = (int)strlen(entry) - 1;
+	for (; i >= 0; --i) {
+		if (entry[i] == '/' || entry[i] == '\\') { --depth; }
+		if (depth == 0) { break; }
+	}
+	return depth == 0 && i >= 0 ? (size_t)i + 1 : 0;
+}
+
+const char*
+bgame_project_file(const char* file) {
+	// The entry file changes with the module, so the prefix is kept per pointer
+	static const char* entry = NULL;
+	static size_t prefix_len = 0;
+	if (entry != bgame_entry_file) {
+		entry = bgame_entry_file;
+		prefix_len = project_prefix_len(entry);
+	}
+	if (file == NULL) { return NULL; }
+	if (prefix_len > 0 && strncmp(file, entry, prefix_len) == 0) { return file + prefix_len; }
+	return file;
+}
 
 #if BGAME_RELOADABLE
 

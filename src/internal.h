@@ -3,6 +3,9 @@
 
 #include <autolist.h>
 
+/*! How many directories below the project root the app's entry point sits */
+#define BGAME_ENTRY_DEPTH_IN_PROJECT 1
+
 typedef void (*bgame_lifecycle_fn_t)(void);
 
 #define BGAME_ON_LOAD(NAME) BGAME_LIFECYCLE_FN(NAME, on_load)
