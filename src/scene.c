@@ -321,38 +321,60 @@ bgame_scene_update(void) {
 	bgame_scene_update_internal(true);
 }
 
+// Make an entry the current scene for a hook call, since the scene API reads the current one
+static bgame_scene_reg_t
+bgame_select_scene(int index) {
+	bgame_scene_mgr.current_scene_index = index;
+	bgame_scene_mgr.current_scene = bgame_find_scene(bgame_scene_mgr.scene_stack[index].name);
+	return bgame_scene_mgr.current_scene;
+}
+
+// The reload hooks run on every scene in the stack: a suspended scene keeps its
+// variables across a reload like the current one does.
+
 void
 bgame_scene_check_reload(void) {
-	bgame_scene_reg_t current_scene = bgame_scene_mgr.current_scene;
-	if (current_scene.def->check_reload != NULL) {
-		current_scene.def->check_reload();
+	int top = bgame_scene_mgr.current_scene_index;
+	for (int i = top; i >= 0; --i) {
+		bgame_scene_reg_t scene = bgame_select_scene(i);
+		if (scene.def->check_reload != NULL) {
+			scene.def->check_reload();
+		}
 	}
+	bgame_select_scene(top);
 }
 
 void
 bgame_scene_before_reload(void) {
-	bgame_scene_reg_t current_scene = bgame_scene_mgr.current_scene;
-	if (current_scene.def->before_reload != NULL) {
-		BLOG_INFO("Saving scene `%s`", current_scene.name);
-		current_scene.def->before_reload();
+	int top = bgame_scene_mgr.current_scene_index;
+	for (int i = top; i >= 0; --i) {
+		bgame_scene_reg_t scene = bgame_select_scene(i);
+		if (scene.def->before_reload != NULL) {
+			BLOG_INFO("Saving scene `%s`", scene.name);
+			scene.def->before_reload();
+		}
 	}
+	bgame_select_scene(top);
 }
 
 void
 bgame_scene_after_reload(void) {
-	bgame_scene_entry_t* current_entry = &bgame_scene_mgr.scene_stack[bgame_scene_mgr.current_scene_index];
-	bgame_scene_reg_t current_scene = bgame_scene_mgr.current_scene = bgame_find_scene(current_entry->name);
+	// Bottom up so the current scene runs last and wins any global it sets
+	int top = bgame_scene_mgr.current_scene_index;
+	for (int i = 0; i <= top; ++i) {
+		bgame_scene_reg_t scene = bgame_select_scene(i);
+		if (scene.def->after_reload != NULL) {
+			BLOG_INFO("Loading scene `%s`", scene.name);
+			scene.def->after_reload();
+		}
 
-	if (current_scene.def->after_reload != NULL) {
-		BLOG_INFO("Loading scene `%s`", current_entry->name);
-		current_scene.def->after_reload();
+		if (scene.def->init != NULL) {
+			BLOG_INFO("Reinitializing scene `%s`", scene.name);
+			bgame_scene_mgr.scene_state = BGAME_SCENE_REINITIALIZING;
+			scene.def->init();
+		}
 	}
-
-	if (current_scene.def->init != NULL) {
-		BLOG_INFO("Reinitializing scene `%s`", current_entry->name);
-		bgame_scene_mgr.scene_state = BGAME_SCENE_REINITIALIZING;
-		current_scene.def->init();
-	}
+	bgame_select_scene(top);
 }
 
 void

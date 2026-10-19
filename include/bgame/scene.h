@@ -19,7 +19,6 @@ typedef enum {
 typedef struct bgame_scene_s {
 	void (*init)(void);
 	void (*update)(void);
-	// Runs on a running or a suspended scene alike
 	void (*cleanup)(void);
 
 	void (*suspend)(void);
@@ -188,12 +187,24 @@ bgame_scene_stack_depth(void);
 void
 bgame_scene_update(void);
 
+/**
+ * Ask every scene in the stack whether it can reload, top down.
+ *
+ * @ref bgame_veto_reload.
+ */
 void
 bgame_scene_check_reload(void);
 
+/**
+ * Run `before_reload` on every scene in the stack, top down, in the old code.
+ */
 void
 bgame_scene_before_reload(void);
 
+/**
+ * Run `after_reload` and then `init` on every scene in the stack, bottom up,
+ * in the new code.
+ */
 void
 bgame_scene_after_reload(void);
 
