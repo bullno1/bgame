@@ -106,6 +106,10 @@ bgame_ui_focus_action(uint32_t actions);
 bool
 bgame_ui_focus_route(uint32_t actions);
 
+/*! Hand actions to the first claimant from the innermost focus element under the pointer up; false for none */
+bool
+bgame_ui_focus_route_pointer(uint32_t actions);
+
 /*! Move the focus; false when there was nowhere to go */
 bool
 bgame_ui_focus_move(bgame_ui_focus_dir_t dir);

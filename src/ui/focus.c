@@ -48,6 +48,7 @@ typedef struct {
 
 	bgame_ui_id_t hovered;
 	bgame_ui_id_t captured;
+	bgame_ui_id_t pointed;
 	bool pointer_down;
 	bool pointer_active;
 	bgame_ui_pointer_policy_t policy;
@@ -370,12 +371,15 @@ bgame_ui_focus_begin(const bgame_ui_pointer_t* pointer) {
 	if (state->pointer_active) { state->mode = BGAME_UI_INPUT_POINTER; }
 
 	bgame_ui_id_t under = 0;
+	state->pointed = 0;
 	focus_tree_t* tree = state->previous;
 	if (tree != NULL) {
 		focus_node_t* focused = find_node(tree, state->focused);
 		focus_node_t* scope = focused != NULL ? scope_of(focused) : &tree->root;
 		for (int i = pointer->num_over - 1; i >= 0; --i) {
 			focus_node_t* node = find_node(tree, pointer->over[i]);
+			if (node == NULL) { continue; }
+			if (state->pointed == 0) { state->pointed = node->id; }
 			if (is_focusable(node) && scope_of(node) == scope) {
 				under = node->id;
 				break;
@@ -545,16 +549,10 @@ bgame_ui_focus_action(uint32_t actions) {
 
 // Sending input {{{
 
-bool
-bgame_ui_focus_route(uint32_t actions) {
+static bool
+route_from(focus_node_t* node, uint32_t actions) {
 	focus_state_t* state = &bgame_ui_focus_state;
-	focus_tree_t* tree = state->previous;
-	if (tree == NULL) { return false; }
-	set_mode_navigation();
-	if (is_leaving(state->focused)) { return true; }
-
 	bool any = false;
-	focus_node_t* node = find_node(tree, state->focused);
 	for (; node != NULL && actions != 0; node = node->parent) {
 		uint32_t taken = node->claims & actions;
 		if (taken == 0) { continue; }
@@ -565,6 +563,25 @@ bgame_ui_focus_route(uint32_t actions) {
 		any = true;
 	}
 	return any;
+}
+
+bool
+bgame_ui_focus_route(uint32_t actions) {
+	focus_state_t* state = &bgame_ui_focus_state;
+	focus_tree_t* tree = state->previous;
+	if (tree == NULL) { return false; }
+	set_mode_navigation();
+	if (is_leaving(state->focused)) { return true; }
+	return route_from(find_node(tree, state->focused), actions);
+}
+
+bool
+bgame_ui_focus_route_pointer(uint32_t actions) {
+	focus_state_t* state = &bgame_ui_focus_state;
+	focus_tree_t* tree = state->previous;
+	if (tree == NULL) { return false; }
+	// The over chain never holds a leaving element, so no check is needed here
+	return route_from(find_node(tree, state->pointed), actions);
 }
 
 bool
