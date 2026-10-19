@@ -526,6 +526,14 @@ bgame_ui_locale(void);
 	)
 
 /**
+ * Read another element's state
+ *
+ * NULL when the element did not declare it.
+ */
+#define bgame_ui_state_of(ID, TAG) \
+	((typeof(TAG.bgame_ui__type)*)bgame_ui__state_of((ID), &TAG))
+
+/**
  * Push a copy of the current context, zero-initialized if there is none
  *
  * For passing data down a UI tree, such as a theme.
@@ -575,6 +583,9 @@ struct bgame_ui__ctx_link_s {
 
 void*
 bgame_ui__state(size_t size, size_t alignment, const void* tag);
+
+void*
+bgame_ui__state_of(bgame_ui_id_t id, const void* tag);
 
 void*
 bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag);

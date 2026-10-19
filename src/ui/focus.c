@@ -76,18 +76,23 @@ is_enabled(const focus_node_t* node) {
 	return true;
 }
 
-/*! Whether the element or an ancestor was exiting last frame; walks the UI tree, since the one leaving need not be a focus node */
-static bool
-is_leaving(bgame_ui_id_t id) {
+/*! The element or the ancestor that was exiting last frame, 0 for none; walks the UI tree, since the one leaving need not be a focus node */
+static bgame_ui_id_t
+leaving_root(bgame_ui_id_t id) {
 	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
-	if (tree == NULL || id == 0) { return false; }
+	if (tree == NULL || id == 0) { return 0; }
 	bgame_ui_node_t* const* slot = bhamt_get(&tree->index, id);
 	for (const bgame_ui_node_t* node = slot != NULL ? *slot : NULL; node != NULL; node = node->parent) {
 		if (node->transition != NULL && node->transition->phase == BGAME_UI_TRANSITION_EXITING) {
-			return true;
+			return node->id;
 		}
 	}
-	return false;
+	return 0;
+}
+
+static bool
+is_leaving(bgame_ui_id_t id) {
+	return leaving_root(id) != 0;
 }
 
 static bool
@@ -549,10 +554,11 @@ bgame_ui_focus_action(uint32_t actions) {
 
 // Sending input {{{
 
-static bool
+// The innermost claimant, 0 for none
+static bgame_ui_id_t
 route_from(focus_node_t* node, uint32_t actions) {
 	focus_state_t* state = &bgame_ui_focus_state;
-	bool any = false;
+	bgame_ui_id_t first = 0;
 	for (; node != NULL && actions != 0; node = node->parent) {
 		uint32_t taken = node->claims & actions;
 		if (taken == 0) { continue; }
@@ -560,26 +566,28 @@ route_from(focus_node_t* node, uint32_t actions) {
 			if (taken & (1u << bit)) { state->routed[bit] = node->id; }
 		}
 		actions &= ~taken;
-		any = true;
+		if (first == 0) { first = node->id; }
 	}
-	return any;
+	return first;
 }
 
-bool
+bgame_ui_id_t
 bgame_ui_focus_route(uint32_t actions) {
 	focus_state_t* state = &bgame_ui_focus_state;
 	focus_tree_t* tree = state->previous;
-	if (tree == NULL) { return false; }
+	if (tree == NULL) { return 0; }
 	set_mode_navigation();
-	if (is_leaving(state->focused)) { return true; }
+	// A leaving subtree swallows the action: handled, by the one leaving
+	bgame_ui_id_t leaving = leaving_root(state->focused);
+	if (leaving != 0) { return leaving; }
 	return route_from(find_node(tree, state->focused), actions);
 }
 
-bool
+bgame_ui_id_t
 bgame_ui_focus_route_pointer(uint32_t actions) {
 	focus_state_t* state = &bgame_ui_focus_state;
 	focus_tree_t* tree = state->previous;
-	if (tree == NULL) { return false; }
+	if (tree == NULL) { return 0; }
 	// The over chain never holds a leaving element, so no check is needed here
 	return route_from(find_node(tree, state->pointed), actions);
 }

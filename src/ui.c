@@ -1315,6 +1315,13 @@ bgame_ui__state(size_t size, size_t alignment, const void* tag) {
 }
 
 void*
+bgame_ui__state_of(bgame_ui_id_t id, const void* tag) {
+	ui_state_key_t key = { .id = id, .tag = tag };
+	void** state_ptr = bhamt_get(&ui_previous_states, key);
+	return state_ptr != NULL ? *state_ptr : NULL;
+}
+
+void*
 bgame_ui__push_ctx(size_t size, size_t alignment, ptrdiff_t offset, const void* tag) {
 	barena_t* frame_arena = bgame_frame_arena();
 
