@@ -15,6 +15,8 @@ set(SOURCES
 	"src/scene.c"
 	"src/shader.c"
 	"src/metrics.c"
+	"src/sound.c"
+	"src/sound/mix.c"
 	"src/asset.c"
 	"src/asset/sprite.c"
 	"src/asset/audio.c"
