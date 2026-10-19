@@ -26,6 +26,11 @@ struct ui_scope_s {
 	bgame_ui_node_t* node;
 	ui_scope_t* parent;
 	int num_anonymous;
+	/*! The outlet this scope is or is nested in, NULL for none; a frame copy */
+	const char* outlet;
+	/*! What an element declared in the outlet is owned by: the owner of the composite whose outlet this is */
+	bgame_ui_id_t outlet_owner;
+	bool owns_outlet;
 };
 
 typedef struct {
@@ -152,10 +157,18 @@ bgame_ui_scope_id(void) {
 	return ui_scope != NULL ? ui_scope->id : 0;
 }
 
+static const char*
+frame_strcpy(const char* str);
+
 static ui_scope_t*
 push_scope(bgame_ui_id_t id, bgame_ui_node_t* node) {
 	ui_scope_t* scope = bgame_alloc_for_frame(sizeof(ui_scope_t), _Alignof(ui_scope_t));
 	*scope = (ui_scope_t){ .id = id, .node = node, .parent = ui_scope };
+	// A pushed id inside an outlet is still in it; an element's children are its own
+	if (node == NULL && ui_scope != NULL) {
+		scope->outlet = ui_scope->outlet;
+		scope->outlet_owner = ui_scope->outlet_owner;
+	}
 	ui_scope = scope;
 	return scope;
 }
@@ -171,8 +184,32 @@ bgame_ui_push_id(const char* name, uint64_t index) {
 
 void
 bgame_ui_pop_id(void) {
-	if (ui_scope == NULL || ui_scope->node != NULL) {
+	if (ui_scope == NULL || ui_scope->node != NULL || ui_scope->owns_outlet) {
 		BFMT_ERROR("Id popped without one pushed");
+		return;
+	}
+	ui_scope = ui_scope->parent;
+}
+
+void
+bgame_ui_outlet_begin(const char* name) {
+	if (ui_scope == NULL || name == NULL) {
+		BFMT_ERROR("Outlet begun outside of a UI frame or without a name");
+		return;
+	}
+	// The content is owned by whoever owns the composite whose outlet this is
+	const bgame_ui_node_t* composite = ui_open;
+	while (composite != NULL && !composite->composite) { composite = composite->parent; }
+	ui_scope_t* scope = push_scope(bgame_ui_make_id(ui_scope->id, name, 0), NULL);
+	scope->outlet = frame_strcpy(name);
+	scope->outlet_owner = composite != NULL ? composite->owner : 0;
+	scope->owns_outlet = true;
+}
+
+void
+bgame_ui_outlet_end(void) {
+	if (ui_scope == NULL || !ui_scope->owns_outlet) {
+		BFMT_ERROR("Outlet ended without one begun");
 		return;
 	}
 	ui_scope = ui_scope->parent;
@@ -283,11 +320,11 @@ frame_strcpy(const char* str) {
 
 bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
-	return bgame_ui__begin_at((bgame_ui_loc_t){ 0 }, loc, key, false);
+	return bgame_ui__begin_at((bgame_ui_loc_t){ 0 }, loc, key);
 }
 
 bgame_ui_id_t
-bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key, bool block) {
+bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	if (ui_scope == NULL) {
 		BFMT_ERROR("Element opened outside of a UI frame");
 		return 0;
@@ -308,8 +345,11 @@ bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key, b
 		.index = index,
 		.loc = { frame_strcpy(loc.file), loc.line },
 		.def = { frame_strcpy(def.file), def.line },
-		.widget = block,
-		.internal = ui_open->widget || ui_open->internal,
+		.outlet = ui_scope->outlet,
+		.composite = def.file != NULL,
+		.owner = ui_scope->outlet != NULL
+			? ui_scope->outlet_owner
+			: (ui_open->composite ? ui_open->id : ui_open->owner),
 		.parent = ui_open,
 		.prev_sibling = ui_open->last_child,
 		.depth = ui_open->depth + 1,

@@ -30,8 +30,8 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 	if (node->first_child == NULL) { flags |= ImGuiTreeNodeFlags_Leaf; }
 	if (node->id == selected) { flags |= ImGuiTreeNodeFlags_Selected; }
 
-	// A widget's internals are dimmed, as a pick skips them
-	if (node->internal) { ImGui_PushStyleColorImVec4(ImGuiCol_Text, *ImGui_GetStyleColorVec4(ImGuiCol_TextDisabled)); }
+	// What a composite declares is dimmed, as a pick skips it
+	if (node->owner != 0) { ImGui_PushStyleColorImVec4(ImGuiCol_Text, *ImGui_GetStyleColorVec4(ImGuiCol_TextDisabled)); }
 	// The id is the tree key, since the node itself is new every frame
 	bool open = ImGui_TreeNodeExPtr(
 		(const void*)(uintptr_t)node->id, flags,
@@ -39,7 +39,7 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 		node->name != NULL ? node->name : "(anonymous)", node->index,
 		content_name(node->decl)
 	);
-	if (node->internal) { ImGui_PopStyleColor(); }
+	if (node->owner != 0) { ImGui_PopStyleColor(); }
 	if (ImGui_IsItemHovered(0)) { ui_inspect_imgui_hovered = node->id; }
 	if (ImGui_IsItemClicked()) { bgame_ui_inspect_select(selected == node->id ? 0 : node->id); }
 
@@ -57,11 +57,18 @@ draw_sizing(const char* label, const bgame_ui_sizing_t* sizing) {
 }
 
 static void
-draw_details(const bgame_ui_inspect_node_t* node) {
+draw_details(const bgame_ui_inspect_node_t* tree, const bgame_ui_inspect_node_t* node) {
 	const bgame_ui_element_t* decl = node->decl;
 	ImGui_SeparatorText(node->name != NULL ? node->name : "(anonymous)");
 	draw_loc("Source", node->loc);
 	draw_loc("Defined", node->def);
+	if (node->outlet != NULL) { ImGui_LabelText("Outlet", "%s", node->outlet); }
+	if (node->owner != 0) {
+		const bgame_ui_inspect_node_t* owner = bgame_ui_inspect_find(tree, node->owner);
+		if (owner != NULL) {
+			ImGui_LabelText("Owner", "%s #%" PRIu64, owner->name != NULL ? owner->name : "(anonymous)", owner->index);
+		}
+	}
 	ImGui_LabelText("Id", "%016" PRIx64, node->id);
 	ImGui_LabelText("Bounds", "%.1f, %.1f  %.1f x %.1f", node->bounds.x, node->bounds.y, node->bounds.width, node->bounds.height);
 	ImGui_LabelText("Visible", "%.1f, %.1f  %.1f x %.1f", node->clip.x, node->clip.y, node->clip.width, node->clip.height);
@@ -111,5 +118,5 @@ bgame_ui_inspect(void) {
 
 	bgame_ui_id_t shown = ui_inspect_imgui_hovered != 0 ? ui_inspect_imgui_hovered : bgame_ui_inspect_selected();
 	const bgame_ui_inspect_node_t* node = bgame_ui_inspect_find(tree, shown);
-	if (node != NULL) { draw_details(node); }
+	if (node != NULL) { draw_details(tree, node); }
 }

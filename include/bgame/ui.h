@@ -32,6 +32,7 @@ typedef struct {
 	int line;
 } bgame_ui_loc_t;
 
+/*! Expands into the current source location */
 #define BUI_HERE() ((bgame_ui_loc_t){ __FILE__, __LINE__ })
 
 // Layout {{{
@@ -292,30 +293,28 @@ bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key);
 
 /**
- * @ref bgame_ui__begin for an element a widget places at its caller's @p loc, opened at @p def
+ * @ref bgame_ui__begin for a composite's root, placed at its caller's @p loc and opened at @p def
  *
- * With @p block, the block that follows is the widget's own code and what it declares
- * is internal to the widget.
+ * The root owns what the composite declares under it, up to an outlet.
  */
 bgame_ui_id_t
-bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key, bool block);
+bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key);
 
 /*! Give the begun element its declaration, returning its id */
 bgame_ui_id_t
 bgame_ui__configure(const bgame_ui_element_t* element);
 
 /**
- * Open an element, returning its id: `bgame_ui_open_at(loc, "Name", &element)`
+ * Open a composite's root, returning its id: `bgame_ui_open_at(loc, "Name", &element)`
  *
- * For a widget placing its root at a location its caller gave, see @ref BUI_HERE: the
- * inspector reports this line as where the element is defined.
- * The declaration is evaluated inside the element.
+ * @p loc is the location the caller gave, see @ref BUI_HERE: the inspector reports this
+ * line as where the element is defined.
  */
 #define bgame_ui_open_at bgame_ui__open_at_line(__LINE__)
 #define bgame_ui__open_at_line(LINE) \
 	(bgame_ui__begin_at((bgame_ui_loc_t){ __FILE__, LINE }, bgame_ui__open_at_args
 #define bgame_ui__open_at_args(LOC, KEY, ...) \
-	(LOC), BUI__KEY_OF(KEY), false), bgame_ui__configure(__VA_ARGS__))
+	(LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(__VA_ARGS__))
 
 void
 bgame_ui_close(void);
@@ -327,8 +326,8 @@ bgame_ui__block(void);
  * Call a function taking a @ref bgame_ui_loc_t first with the location of the call
  *
  * `FN` must be a function, not a macro.
- * `#define my_widget BUI_CALL_WITH_LOC(my_widget_at)` expands `my_widget(x, y)` into
- * `my_widget_at(BUI_HERE(), x, y)` and `my_widget()` into `my_widget_at(BUI_HERE())`.
+ * `#define my_composite BUI_CALL_WITH_LOC(my_composite_at)` expands `my_composite(x, y)`
+ * into `my_composite_at(BUI_HERE(), x, y)` and `my_composite()` into `my_composite_at(BUI_HERE())`.
  */
 #define BUI_CALL_WITH_LOC(FN) FN(BUI_HERE() BUI__CALL_WITH_LOC_ARGS
 #define BUI__CALL_WITH_LOC_ARGS(...) __VA_OPT__(,) __VA_ARGS__)
@@ -336,9 +335,9 @@ bgame_ui__block(void);
 /**
  * @ref BUI_CALL_WITH_LOC for a function taking a config struct, as a braced list or a variable
  *
- * `#define my_widget BUI_CALL_WITH_LOC_AND_CONFIG(my_widget_at, my_widget_config_t)` expands
- * `my_widget({ .a = 1 })` and `my_widget(config)` into `my_widget_at(BUI_HERE(), ...)`, the
- * way @ref BUI takes its declaration.
+ * `#define my_composite BUI_CALL_WITH_LOC_AND_CONFIG(my_composite_at, my_composite_config_t)`
+ * expands `my_composite({ .a = 1 })` and `my_composite(config)` into
+ * `my_composite_at(BUI_HERE(), ...)`, the way @ref BUI takes its declaration.
  */
 #define BUI_CALL_WITH_LOC_AND_CONFIG(FN, TYPE) FN(BUI_HERE(), ((TYPE[1])BUI__CALL_WITH_LOC_AND_CONFIG_ARGS
 #define BUI__CALL_WITH_LOC_AND_CONFIG_ARGS(...) { __VA_OPT__([0] =) __VA_ARGS__ })[0])
@@ -351,17 +350,18 @@ bgame_ui__block(void);
 #define BUI__ELEM(...) ((bgame_ui_element_t[1]){ __VA_OPT__([0] =) __VA_ARGS__ })
 
 /**
- * `BUI` placed at a location given to the widget by its caller, see @ref BUI_HERE
+ * `BUI` placed at a location given to the composite by its caller, see @ref BUI_HERE
  *
- * The nested block is the widget's own code, so what it declares is internal to the widget.
- * A pick on an internal element lands on this element instead.
+ * The element is the composite's root and owns what the following code block declares.
+ * A pick on an owned element lands on this line.
  * A deep pick (@ref BGAME_UI_PICK_DEEP) bypasses this rule.
+ * Content the caller provides goes in an outlet, see @ref bgame_ui_outlet_begin.
  */
 #define BUI_AT BUI__AT_LINE(__LINE__)
 #define BUI__AT_LINE(LINE) \
 	for (bgame_ui__begin_at((bgame_ui_loc_t){ __FILE__, LINE }, BUI__AT_ARGS
 #define BUI__AT_ARGS(LOC, KEY, ...) \
-	(LOC), BUI__KEY_OF(KEY), true), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
+	(LOC), BUI__KEY_OF(KEY)), bgame_ui__configure(BUI__ELEM(__VA_ARGS__)); bgame_ui__block(); bgame_ui_close())
 
 /*! `BUI("X", { .layout = ... }) { children }`, placed at the line of `BUI` */
 #define BUI BUI__AT(__LINE__)
@@ -379,6 +379,22 @@ bgame_ui_pop_id(void);
 
 #define BUI_ID_SCOPE(NAME, INDEX) \
 	BGAME_SCOPE(bgame_ui_push_id((NAME), (INDEX)), bgame_ui_pop_id())
+
+/**
+ * Begin an outlet: where a composite puts the content its caller provides
+ *
+ * The outlet has its own id scope so its element cannot have id collision with
+ * the composite. Elements inside an outlet are attributed to the caller.
+ */
+void
+bgame_ui_outlet_begin(const char* name);
+
+void
+bgame_ui_outlet_end(void);
+
+/*! `BUI_OUTLET("body") { config.body(config.ctx); }` */
+#define BUI_OUTLET(NAME) \
+	for (bool bgame_ui__outlet = (bgame_ui_outlet_begin(NAME), true); bgame_ui__outlet; bgame_ui_outlet_end(), bgame_ui__outlet = false)
 
 /*! The open element, 0 at the root */
 bgame_ui_id_t

@@ -22,12 +22,14 @@ struct bgame_ui_node_s {
 	const char* name;
 	uint64_t index;
 	bgame_ui_loc_t loc;
-	/*! Where a widget opens it, NULL file for an element placed where it is declared */
+	/*! Where a composite opens it, NULL file for an element placed where it is declared */
 	bgame_ui_loc_t def;
-	/*! Its block is a widget's own code */
-	bool widget;
-	/*! Declared by a widget's own code */
-	bool internal;
+	/*! The outlet it was declared in, NULL for none; a frame copy */
+	const char* outlet;
+	/*! A composite's root: it owns what is declared under it */
+	bool composite;
+	/*! The composite root whose code declared it, 0 for none */
+	bgame_ui_id_t owner;
 	bgame_ui_element_t decl;
 
 	bgame_ui_node_t* parent;

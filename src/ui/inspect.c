@@ -77,7 +77,7 @@ bgame_ui_inspect_picked(void) {
 	return ui_inspect_picked;
 }
 
-/*! The innermost element under the pointer, or the innermost named one, or the widget it is internal to */
+/*! The innermost element under the pointer, or the innermost named one, or the composite that owns it */
 static bgame_ui_id_t
 pick_candidate(const bgame_ui_id_t* over, int num_over) {
 	const bgame_ui_tree_t* tree = bgame_ui_previous_tree();
@@ -90,8 +90,12 @@ pick_candidate(const bgame_ui_id_t* over, int num_over) {
 	}
 	if (found == NULL) { return 0; }
 	if (!(ui_inspect_pick_flags & BGAME_UI_PICK_DEEP)) {
-		// Up to the element the code that placed the widget declared: its root, or an outer widget's
-		while (found->internal && found->parent != NULL) { found = found->parent; }
+		// Up to an element nobody owns: the composite's root, or an outer composite's
+		while (found->owner != 0) {
+			bgame_ui_node_t* const* owner = bhamt_get(&tree->index, found->owner);
+			if (owner == NULL) { break; }
+			found = *owner;
+		}
 	}
 	return found->id;
 }
@@ -314,7 +318,8 @@ fill_node(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth, 
 		.index = node->index,
 		.loc = node->loc,
 		.def = node->def,
-		.internal = node->internal,
+		.outlet = node->outlet,
+		.owner = node->owner,
 		.decl = &node->decl,
 		.depth = depth,
 		.num_descendants = num_descendants,

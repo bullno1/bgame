@@ -33,7 +33,7 @@ typedef enum {
 	 *   * vscode: `code --goto {file}:{line}`
 	 */
 	BGAME_UI_PICK_EDIT          = 1 << 4,
-	/*! Pick a widget's internal elements rather than the widget */
+	/*! Pick what a composite declares rather than the composite */
 	BGAME_UI_PICK_DEEP          = 1 << 5,
 } bgame_ui_pick_flag_t;
 
@@ -79,12 +79,14 @@ struct bgame_ui_inspect_node_s {
 	/*! NULL for an anonymous element and the root */
 	const char* name;
 	uint64_t index;
-	/*! Where the element is placed: the caller's line for a widget's root */
+	/*! Where the element is placed: the caller's line for a composite's root */
 	bgame_ui_loc_t loc;
-	/*! Where a widget opens it, NULL file for an element placed where it is declared */
+	/*! Where a composite opens it, NULL file for an element placed where it is declared */
 	bgame_ui_loc_t def;
-	/*! Declared by a widget's own code, so a pick lands on the widget unless deep */
-	bool internal;
+	/*! The outlet it was declared in, NULL for none */
+	const char* outlet;
+	/*! The composite root whose code declared it, where a pick lands unless deep; 0 for none */
+	bgame_ui_id_t owner;
 	const bgame_ui_element_t* decl;
 	/*! 0 for the root */
 	int depth;
