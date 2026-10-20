@@ -248,7 +248,14 @@ typedef struct {
 	float wheel;
 } bgame_ui_frame_t;
 
-/*! Begin a frame, NULL for the app's window and mouse. Hover is decided against last frame's layout. */
+/*! The app's window and mouse as a frame */
+bgame_ui_frame_t
+bgame_ui_app_frame(void);
+
+/*!
+ * Begin a frame, NULL for the app's window and mouse. Hover is decided against last frame's layout.
+ * The frame's size is the UI's space; bgame_ui_render stretches it over the window.
+ */
 void
 bgame_ui_begin(const bgame_ui_frame_t* frame);
 

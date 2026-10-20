@@ -92,6 +92,10 @@ typedef struct {
 const bgame_ui_tree_t*
 bgame_ui_previous_tree(void);
 
+/*! The tree bgame_ui_commands draws: this frame's once it ended, else the last one */
+const bgame_ui_tree_t*
+bgame_ui_rendered_tree(void);
+
 /*! The box of an element of this frame, after the layout, false for one that is not laid out */
 bool
 bgame_ui_element_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds);

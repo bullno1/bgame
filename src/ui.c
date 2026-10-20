@@ -277,10 +277,15 @@ bgame_ui_dt(void) {
 	return ui_current != NULL ? ui_current->input.dt : 0.f;
 }
 
+const bgame_ui_tree_t*
+bgame_ui_rendered_tree(void) {
+	// The frame just ended is the one to draw
+	return ui_scope == NULL ? ui_current : ui_previous;
+}
+
 const bgame_ui_command_t*
 bgame_ui_commands(int* count) {
-	// The frame just ended is the one to draw
-	bgame_ui_tree_t* tree = ui_scope == NULL ? ui_current : ui_previous;
+	const bgame_ui_tree_t* tree = bgame_ui_rendered_tree();
 	if (tree == NULL) {
 		*count = 0;
 		return NULL;
@@ -1113,26 +1118,27 @@ imgui_has_pointer(void) {
 	return ImGui_GetCurrentContext() != NULL && ImGui_GetIO()->WantCaptureMouse;
 }
 
-static void
-read_app_input(bgame_ui_frame_t* input) {
+bgame_ui_frame_t
+bgame_ui_app_frame(void) {
 	int width, height;
 	cf_app_get_size(&width, &height);
-	*input = (bgame_ui_frame_t){
+	bgame_ui_frame_t input = {
 		.size = { (float)width, (float)height },
 		.dt = CF_DELTA_TIME,
 		.wheel = cf_mouse_wheel_motion(),
 	};
 	if (imgui_has_pointer()) {
 		// Off screen and up, so nothing is hovered, pressed or kept captured under the window
-		input->pointer = cf_v2(-1.f, -1.f);
-		input->wheel = 0.f;
-		return;
+		input.pointer = cf_v2(-1.f, -1.f);
+		input.wheel = 0.f;
+		return input;
 	}
-	input->pointer = cf_v2(cf_mouse_x(), cf_mouse_y());
-	input->pointer_down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
-	input->pointer_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT);
-	input->pointer_released = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT);
-	input->pointer_alt_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
+	input.pointer = cf_v2(cf_mouse_x(), cf_mouse_y());
+	input.pointer_down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
+	input.pointer_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT);
+	input.pointer_released = cf_mouse_just_released(CF_MOUSE_BUTTON_LEFT);
+	input.pointer_alt_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_RIGHT);
+	return input;
 }
 
 static bhamt_hash_t
@@ -1173,12 +1179,7 @@ bgame_ui_begin(const bgame_ui_frame_t* frame) {
 		BFMT_ERROR("UI frame begun inside another");
 		return;
 	}
-	bgame_ui_frame_t input;
-	if (frame != NULL) {
-		input = *frame;
-	} else {
-		read_app_input(&input);
-	}
+	bgame_ui_frame_t input = frame != NULL ? *frame : bgame_ui_app_frame();
 
 	ui_previous = ui_current;
 	bgame_ui_tree_t* tree = bgame_alloc_for_frame(sizeof(bgame_ui_tree_t), _Alignof(bgame_ui_tree_t));

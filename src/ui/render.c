@@ -15,12 +15,13 @@ BGAME_AFTER_RELOAD(bgame_ui_render) {
 	bgame_load_draw_shader(&ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
 }
 
+// Scissors are in device pixels, so the rect is scaled out of UI space
 static CF_Rect
-scissor_of(bgame_ui_rect_t rect) {
-	int x0 = (int)floorf(rect.x);
-	int y0 = (int)floorf(rect.y);
-	int x1 = (int)ceilf(rect.x + rect.width);
-	int y1 = (int)ceilf(rect.y + rect.height);
+scissor_of(bgame_ui_rect_t rect, CF_V2 pixels_per_unit) {
+	int x0 = (int)floorf(rect.x * pixels_per_unit.x);
+	int y0 = (int)floorf(rect.y * pixels_per_unit.y);
+	int x1 = (int)ceilf((rect.x + rect.width) * pixels_per_unit.x);
+	int y1 = (int)ceilf((rect.y + rect.height) * pixels_per_unit.y);
 	return (CF_Rect){ x0, y0, x1 - x0, y1 - y0 };
 }
 
@@ -44,16 +45,26 @@ draw_highlight(const bgame_ui_box_t* box) {
 
 void
 bgame_ui_render(void) {
+	const bgame_ui_tree_t* tree = bgame_ui_rendered_tree();
+	if (tree == NULL) { return; }
 	int count;
 	const bgame_ui_command_t* commands = bgame_ui_commands(&count);
 	if (ui_overlay_shader.id == 0) {
 		bgame_load_draw_shader(&ui_overlay_shader, bgame_ui_overlay_shd_bytecode);
 	}
 
+	// The frame's size is stretched over the window, so a frame smaller than it is a zoom
+	bgame_ui_size_t size = tree->input.size;
+	if (size.width <= 0.f || size.height <= 0.f) { return; }
 	int width, height;
 	cf_app_get_size(&width, &height);
+	CF_V2 pixels_per_unit = cf_v2(
+		(float)cf_app_get_canvas_width() / size.width,
+		(float)cf_app_get_canvas_height() / size.height
+	);
 	cf_draw_push();
-	cf_draw_translate(-(float)width * 0.5f, (float)height * 0.5f);
+	cf_draw_scale((float)width / size.width, (float)height / size.height);
+	cf_draw_translate(-size.width * 0.5f, size.height * 0.5f);
 
 	// Poses are in UI space, y down; the drawing space under the translation is y up
 	CF_M3x2 flip = cf_make_scale(cf_v2(1.f, -1.f));
@@ -67,7 +78,7 @@ bgame_ui_render(void) {
 				command->draw(&command->box, command->box.userdata);
 				break;
 			case BGAME_UI_CMD_CLIP_BEGIN:
-				cf_draw_push_scissor(scissor_of(command->box.bounds));
+				cf_draw_push_scissor(scissor_of(command->box.bounds, pixels_per_unit));
 				break;
 			case BGAME_UI_CMD_CLIP_END:
 				cf_draw_pop_scissor();
