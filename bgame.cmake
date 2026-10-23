@@ -68,6 +68,32 @@ function (add_bgame_app NAME SOURCES)
 	endif ()
 endfunction ()
 
+# Packs DIR into the zip OUTPUT for a static build
+function (bgame_pack_assets OUTPUT DIR)
+	if (RELOADABLE)
+		return ()
+	endif ()
+	cmake_path(ABSOLUTE_PATH DIR BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
+	cmake_path(GET OUTPUT FILENAME NAME)
+	# The list file changes only with the set of files, so a removed file repacks too
+	file(GLOB_RECURSE FILES RELATIVE "${DIR}" CONFIGURE_DEPENDS "${DIR}/*")
+	list(SORT FILES)
+	set(LIST_FILE "${CMAKE_CURRENT_BINARY_DIR}/pack-${NAME}.txt")
+	list(JOIN FILES "\n" LIST_CONTENT)
+	file(CONFIGURE OUTPUT "${LIST_FILE}" CONTENT "${LIST_CONTENT}\n" @ONLY)
+	list(TRANSFORM FILES PREPEND "${DIR}/")
+
+	add_custom_command(
+		OUTPUT "${OUTPUT}"
+		COMMAND ${CMAKE_COMMAND} -E tar cf "${OUTPUT}" --format=zip "--files-from=${LIST_FILE}"
+		WORKING_DIRECTORY "${DIR}"
+		DEPENDS ${FILES} "${LIST_FILE}"
+		COMMENT "Packing ${DIR} into ${NAME}"
+		VERBATIM
+	)
+	add_custom_target(pack-${NAME} ALL DEPENDS "${OUTPUT}")
+endfunction ()
+
 # compile_<type>_shader(INPUT VAR_NAME OUTPUT [INCLUDE_DIRS <dir>...] [DEFINES <name>[=<value>]...] [DEPENDS <file>...])
 #
 # Compiles with bgame-shaderc (tools/shaderc.c) into a C header.
