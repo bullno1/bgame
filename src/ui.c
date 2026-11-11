@@ -247,6 +247,14 @@ bgame_ui_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds) {
 	return true;
 }
 
+bool
+bgame_ui_content_bounds(bgame_ui_id_t id, bgame_ui_rect_t* content) {
+	bgame_ui_node_t* node = find_node(ui_previous, id);
+	if (node == NULL || node->hidden) { return false; }
+	*content = node->content;
+	return true;
+}
+
 const bgame_ui_transition_state_t*
 bgame_ui_transition_state(bgame_ui_id_t id) {
 	bgame_ui_node_t* node = find_node(ui_previous, id);

@@ -427,6 +427,9 @@ bgame_ui_make_key(bgame_ui_id_t scope, const char* name, uint64_t index);
 bool
 bgame_ui_bounds(bgame_ui_id_t id, bgame_ui_rect_t* bounds);
 
+bool
+bgame_ui_content_bounds(bgame_ui_id_t id, bgame_ui_rect_t* content);
+
 /*! Last frame's transition of an element, NULL if it had none */
 const bgame_ui_transition_state_t*
 bgame_ui_transition_state(bgame_ui_id_t id);
