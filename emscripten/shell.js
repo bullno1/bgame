@@ -78,7 +78,38 @@ async function fetchAndInstantiateWasm(wasmUrl, onProgress = () => {}, imports =
 	return result.instance;
 }
 
+const USER_ROOT = '/libsdl';
+let persistInFlight = false;
+let persistDirty = false;
+
+function mountUserDir() {
+	const FS = Module.FS;
+	Module.addRunDependency('user-dir');
+	FS.mkdir(USER_ROOT);
+	FS.mount(Module.IDBFS, {}, USER_ROOT);
+	FS.syncfs(true, (err) => {
+		if (err) { console.error('Could not load the user directory', err); }
+		Module.removeRunDependency('user-dir');
+	});
+}
+
+function persistUserDir() {
+	if (persistInFlight) {
+		persistDirty = true;
+		return;
+	}
+	persistInFlight = true;
+	persistDirty = false;
+	Module.FS.syncfs(false, (err) => {
+		persistInFlight = false;
+		if (err) { console.error('Could not persist the user directory', err); }
+		if (persistDirty) { persistUserDir(); }
+	});
+}
+
 window.Module = {
+	preRun: [mountUserDir],
+	persistUserDir,
 	print(...args) {
 		console.log(...args);
 	},

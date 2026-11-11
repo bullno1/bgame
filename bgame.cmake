@@ -239,7 +239,11 @@ if (EMSCRIPTEN)
 	)
 	add_library(bgame-emscripten-shell INTERFACE)
 	add_dependencies(bgame-emscripten-shell copy-emscripten-shell)
-	target_link_options(bgame-emscripten-shell INTERFACE --shell-file "${CMAKE_CURRENT_LIST_DIR}/emscripten/shell.html")
+	target_link_options(bgame-emscripten-shell INTERFACE
+		--shell-file "${CMAKE_CURRENT_LIST_DIR}/emscripten/shell.html"
+		-lidbfs.js
+		-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,addRunDependency,removeRunDependency
+	)
 elseif (LINUX)
 	get_target_property(S2N_OPTS s2n COMPILE_OPTIONS)
 	list(REMOVE_ITEM S2N_OPTS "-std=gnu99")
