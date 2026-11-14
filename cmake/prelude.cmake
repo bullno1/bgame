@@ -33,16 +33,26 @@ endif ()
 set(CF_FRAMEWORK_BUILD_SAMPLES OFF)
 set(CF_FRAMEWORK_BUILD_TESTS OFF)
 
-# Use SDL3 from the system when it is installed
-set(BGAME_SYSTEM_SDL AUTO CACHE STRING "Link the installed SDL3: ON, OFF, or AUTO (when found)")
+# Select SDL3:
+# * In SteamRT, always use system's SDK
+# * When `RELOADABLE=OFF`: Fetch and build a static version
+# * When `RELOADABLE=ON`: Use system's SDK if available
+set(BGAME_SYSTEM_SDL AUTO CACHE STRING
+	"Link the installed SDL3: ON, OFF, or AUTO (steamrt: always, reloadable: when found, static: never)")
 set_property(CACHE BGAME_SYSTEM_SDL PROPERTY STRINGS AUTO ON OFF)
 # A cross build must not pick up the host's SDL (the msvc-wine toolchain finds it in /usr/lib)
 if (EMSCRIPTEN OR (CMAKE_CROSSCOMPILING AND BGAME_SYSTEM_SDL STREQUAL "AUTO"))
 	set(CF_USE_SYSTEM_SDL OFF)
 elseif (BGAME_SYSTEM_SDL STREQUAL "AUTO")
-	find_package(SDL3 3.4.0...<4.0.0 CONFIG QUIET)
-	if (SDL3_FOUND)
+	if (PLATFORM_NAME STREQUAL "steamrt")
 		set(CF_USE_SYSTEM_SDL ON)
+	elseif (RELOADABLE)
+		find_package(SDL3 3.4.0...<4.0.0 CONFIG QUIET)
+		if (SDL3_FOUND)
+			set(CF_USE_SYSTEM_SDL ON)
+		else ()
+			set(CF_USE_SYSTEM_SDL OFF)
+		endif ()
 	else ()
 		set(CF_USE_SYSTEM_SDL OFF)
 	endif ()
