@@ -63,6 +63,12 @@ endforeach ()
 set(UNSAFE_TREAT_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 # It prefers a static libcrypto, whose own dependencies (zlib, zstd) it never links
 set(S2N_USE_CRYPTO_SHARED_LIBS ON CACHE BOOL "" FORCE)
+if (LINUX
+	AND EXISTS "/usr/include/openssl-3/openssl/crypto.h"
+	AND EXISTS "/usr/lib/openssl-3/libcrypto.so")
+	set(crypto_INCLUDE_DIR "/usr/include/openssl-3" CACHE PATH "" FORCE)
+	set(crypto_SHARED_LIBRARY "/usr/lib/openssl-3/libcrypto.so" CACHE FILEPATH "" FORCE)
+endif ()
 
 # Where the dependencies come from when they have to be added
 set(BGAME_CUTE_FRAMEWORK_URL https://github.com/bullno1/cute_framework.git CACHE STRING "")
