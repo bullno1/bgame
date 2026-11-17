@@ -548,6 +548,38 @@ bgame_ui_locale(void);
 	((typeof(TAG.bgame_ui__type)*)bgame_ui__state_of((ID), &TAG))
 
 /**
+ * Declare an inline element state
+ *
+ * This is useful for retaining application data during an exit transition:
+ *
+ *     // Display an item label that fades in and out
+ *     BUI_PRESENCE("Item", item != NULL, { .transition = { .duration = 0.2f, .enter.fade = 1.f, .exit.fade = 1.f, } }) {
+ *         BUI_STATE_WHEN(item != NULL, struct { const char* label; }, item_view) {
+ *             // Executed when item is valid
+ *             item_view->label = arena_copy(item->label);
+ *         }
+ *
+ *         // Even when `item == NULL`, `item_view->label` is always valid and it
+ *         // retains the most recent value of `item->label`
+ *         BUI("Label", {
+ *		       .content = BUI_TEXT(.text = bgame_str(item_view->label)),
+ *         }) {
+ *         }
+ *     }
+ *
+ * A variable with name `NAME` of type `TYPE*` is declared.
+ *
+ * - When `COND` is true, the following code block will be executed to initialize
+ *   and update the cached state.
+ * - When `COND` is false, the previously declared state is used, allowing
+ *   the UI to animate the element exiting using the last recorded state.
+ */
+#define BUI_STATE_WHEN(COND, TYPE, NAME) \
+	static BUI_STATE_TAG(TYPE) NAME##_tag; \
+	typeof(NAME##_tag.bgame_ui__type)* const NAME = bgame_ui_state(NAME##_tag); \
+	if (COND)
+
+/**
  * Push a copy of the current context, zero-initialized if there is none
  *
  * For passing data down a UI tree, such as a theme.
