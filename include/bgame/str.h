@@ -12,7 +12,10 @@ typedef struct {
 
 static inline bgame_str_t
 bgame_str(const char* cstr) {
-	return (bgame_str_t){ .chars = cstr, .len = (int)strlen(cstr) };
+	return (bgame_str_t){
+		.chars = cstr,
+		.len = cstr != NULL ? (int)strlen(cstr) : 0,
+	};
 }
 
 #endif
