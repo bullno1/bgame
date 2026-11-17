@@ -128,8 +128,11 @@ bgame_ui_render_rich_text(const bgame_ui_box_t* box, void* userdata) {
 
 bgame_ui_content_t
 bgame_ui_rich_text(bgame_ui_rich_text_t rich_text) {
+	bgame_str_t text = rich_text.text;
+	if (text.chars == NULL) { text = (bgame_str_t)BGAME_LIT_STR(""); }
+
 	bgame_ui_rich_text_draw_t* draw = bgame_make_frame_copy(((bgame_ui_rich_text_draw_t){
-		.text = rich_text.text,
+		.text = text,
 		.justify = rich_text.justify,
 		.style = *bgame_ui_resolve_text_style(rich_text.style),
 		.wrap_width = FLT_MAX,
