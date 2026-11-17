@@ -455,6 +455,8 @@ bgame_ui_aabb(bgame_ui_rect_t rect) {
 	};
 }
 
+#define BUI_PADDING_ALL(X) ((bgame_ui_padding_t){ X, X, X, X })
+
 // }}}
 
 // Rendering {{{
