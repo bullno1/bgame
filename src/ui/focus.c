@@ -116,6 +116,13 @@ scope_of(focus_node_t* node) {
 	return scope;
 }
 
+static focus_node_t*
+modal_scope_of(focus_node_t* node) {
+	focus_node_t* scope = node->parent;
+	while (scope->parent != NULL && !(scope->flags & BGAME_UI_FOCUS_MODAL)) { scope = scope->parent; }
+	return scope;
+}
+
 static bool
 is_inside(const focus_node_t* node, const focus_node_t* ancestor) {
 	for (node = node->parent; node != NULL; node = node->parent) {
@@ -380,12 +387,12 @@ bgame_ui_focus_begin(const bgame_ui_pointer_t* pointer) {
 	focus_tree_t* tree = state->previous;
 	if (tree != NULL) {
 		focus_node_t* focused = find_node(tree, state->focused);
-		focus_node_t* scope = focused != NULL ? scope_of(focused) : &tree->root;
+		focus_node_t* scope = focused != NULL ? modal_scope_of(focused) : &tree->root;
 		for (int i = pointer->num_over - 1; i >= 0; --i) {
 			focus_node_t* node = find_node(tree, pointer->over[i]);
 			if (node == NULL) { continue; }
 			if (state->pointed == 0) { state->pointed = node->id; }
-			if (is_focusable(node) && scope_of(node) == scope) {
+			if (is_focusable(node) && !node->is_group && modal_scope_of(node) == scope) {
 				under = node->id;
 				break;
 			}

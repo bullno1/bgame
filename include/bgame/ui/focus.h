@@ -52,7 +52,11 @@ typedef enum {
 	BGAME_UI_FOCUS_DEFAULT   = 1 << 2,
 	/*! Keep navigation and focus inside the group while present */
 	BGAME_UI_FOCUS_MODAL     = 1 << 3,
-	/*! A group that is also a target. Becomes modal once entered */
+	/**
+	 * A group that is also a target. Becomes modal once entered
+	 *
+	 * Pointer navigation skips the group and focus directly on the children.
+	 */
 	BGAME_UI_FOCUS_ENTERABLE = 1 << 4,
 	/*! Left and right wrap around inside this group */
 	BGAME_UI_FOCUS_WRAP_H    = 1 << 5,
