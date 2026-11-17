@@ -42,6 +42,8 @@ typedef struct {
 
 	bgame_ui_id_t focused;
 	bgame_ui_id_t focused_before;
+	bgame_ui_focus_cause_t pending_cause;
+	bgame_ui_focus_change_t change;
 	bgame_ui_id_t autofocus;
 	bgame_ui_id_t routed[32];
 	bgame_ui_rect_t focused_bounds;
@@ -310,6 +312,14 @@ find_fallback(void) {
 }
 
 static void
+write_focus(bgame_ui_id_t id, bgame_ui_focus_cause_t cause) {
+	focus_state_t* state = &bgame_ui_focus_state;
+	if (state->focused == id) { return; }
+	state->focused = id;
+	state->pending_cause = cause;
+}
+
+static void
 set_mode_navigation(void) {
 	if (!bgame_ui_focus_state.pointer_active) {
 		bgame_ui_focus_state.mode = BGAME_UI_INPUT_NAVIGATION;
@@ -404,10 +414,14 @@ bgame_ui_focus_begin(const bgame_ui_pointer_t* pointer) {
 
 	switch (state->policy) {
 		case BGAME_UI_POINTER_FOLLOW:
-			if ((pointer->moved || pointer->pressed) && under != 0) { state->focused = under; }
+			if ((pointer->moved || pointer->pressed) && under != 0) {
+				write_focus(under, BGAME_UI_FOCUS_CAUSE_POINTER);
+			}
 			break;
 		case BGAME_UI_POINTER_CLICK:
-			if (pointer->pressed && under != 0) { state->focused = under; }
+			if (pointer->pressed && under != 0) {
+				write_focus(under, BGAME_UI_FOCUS_CAUSE_POINTER);
+			}
 			break;
 		case BGAME_UI_POINTER_IGNORE:
 			break;
@@ -429,14 +443,14 @@ bgame_ui_focus_end(void) {
 		focus_node_t* node = find_node(tree, state->autofocus);
 		if (node != NULL) {
 			focus_node_t* target = node->is_group ? resolve_into(tree, node, NULL) : node;
-			if (is_focusable(target)) { state->focused = target->id; }
+			if (is_focusable(target)) { write_focus(target->id, BGAME_UI_FOCUS_CAUSE_AUTOFOCUS); }
 		}
 	}
 
 	focus_node_t* focused = find_node(tree, state->focused);
 	if (!is_focusable(focused) || is_leaving(state->focused)) {
 		focused = find_fallback();
-		state->focused = focused != NULL ? focused->id : 0;
+		write_focus(focused != NULL ? focused->id : 0, BGAME_UI_FOCUS_CAUSE_FALLBACK);
 	}
 
 	if (focused != NULL) {
@@ -445,6 +459,13 @@ bgame_ui_focus_end(void) {
 	} else {
 		state->focused_bounds = (bgame_ui_rect_t){ 0 };
 	}
+	bool changed = state->focused != state->focused_before;
+	state->change = (bgame_ui_focus_change_t){
+		.from = state->focused_before,
+		.to = state->focused,
+		.cause = changed ? state->pending_cause : BGAME_UI_FOCUS_CAUSE_NONE,
+	};
+	state->pending_cause = BGAME_UI_FOCUS_CAUSE_NONE;
 	state->focused_before = state->focused;
 
 	memset(state->routed, 0, sizeof(state->routed));
@@ -611,7 +632,7 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
 	if (!is_focusable(cur)) {
 		focus_node_t* target = resolve_into(tree, &tree->root, NULL);
 		if (target == NULL) { return false; }
-		state->focused = target->id;
+		write_focus(target->id, BGAME_UI_FOCUS_CAUSE_NAVIGATION);
 		return true;
 	}
 
@@ -665,13 +686,23 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
 	}
 
 	if (target == NULL) { return false; }
-	state->focused = target->id;
+	write_focus(target->id, BGAME_UI_FOCUS_CAUSE_NAVIGATION);
 	return true;
 }
 
 void
 bgame_ui_focus_set(bgame_ui_id_t id) {
-	bgame_ui_focus_state.focused = id;
+	write_focus(id, BGAME_UI_FOCUS_CAUSE_SET);
+}
+
+void
+bgame_ui_focus_set_as(bgame_ui_id_t id, bgame_ui_focus_cause_t cause) {
+	write_focus(id, cause);
+}
+
+bgame_ui_focus_change_t
+bgame_ui_focus_change(void) {
+	return bgame_ui_focus_state.change;
 }
 
 bgame_ui_id_t

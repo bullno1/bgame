@@ -82,6 +82,21 @@ typedef enum {
 	BGAME_UI_INPUT_POINTER,
 } bgame_ui_input_mode_t;
 
+typedef enum {
+	BGAME_UI_FOCUS_CAUSE_NONE = 0,
+	BGAME_UI_FOCUS_CAUSE_NAVIGATION,
+	BGAME_UI_FOCUS_CAUSE_POINTER,
+	BGAME_UI_FOCUS_CAUSE_SET,
+	BGAME_UI_FOCUS_CAUSE_AUTOFOCUS,
+	BGAME_UI_FOCUS_CAUSE_FALLBACK,
+} bgame_ui_focus_cause_t;
+
+typedef struct {
+	bgame_ui_id_t from;
+	bgame_ui_id_t to;
+	bgame_ui_focus_cause_t cause;
+} bgame_ui_focus_change_t;
+
 // Querying inside an element, during the build
 
 /*! Whether the innermost open focus element is focused */
@@ -129,6 +144,12 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir);
 /*! Focus an element by id, 0 for none */
 void
 bgame_ui_focus_set(bgame_ui_id_t id);
+
+void
+bgame_ui_focus_set_as(bgame_ui_id_t id, bgame_ui_focus_cause_t cause);
+
+bgame_ui_focus_change_t
+bgame_ui_focus_change(void);
 
 /*! The focused element, 0 for none */
 bgame_ui_id_t
