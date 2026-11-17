@@ -242,7 +242,7 @@ if (EMSCRIPTEN)
 	target_link_options(bgame-emscripten-shell INTERFACE
 		--shell-file "${CMAKE_CURRENT_LIST_DIR}/emscripten/shell.html"
 		-lidbfs.js
-		-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,addRunDependency,removeRunDependency
+		-sEXPORTED_RUNTIME_METHODS=FS,IDBFS,ENV,addRunDependency,removeRunDependency
 	)
 elseif (LINUX)
 	get_target_property(S2N_OPTS s2n COMPILE_OPTIONS)

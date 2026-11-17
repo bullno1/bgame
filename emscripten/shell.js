@@ -78,13 +78,14 @@ async function fetchAndInstantiateWasm(wasmUrl, onProgress = () => {}, imports =
 	return result.instance;
 }
 
-const USER_ROOT = '/libsdl';
+const USER_ROOT = '/user';
 let persistInFlight = false;
 let persistDirty = false;
 
 function mountUserDir() {
 	const FS = Module.FS;
 	Module.addRunDependency('user-dir');
+	Module.ENV.XDG_DATA_HOME = USER_ROOT;
 	FS.mkdir(USER_ROOT);
 	FS.mount(Module.IDBFS, {}, USER_ROOT);
 	FS.syncfs(true, (err) => {
