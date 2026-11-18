@@ -1,0 +1,9 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+RELOADABLE=OFF
+. "${CMD_DIR}/../common.sh"
+. "${CMD_DIR}/sdk.sh"
+require_tests
+
+appimagesdk "bin/appimage/${BUILD_DIR}/${TESTS}" "$@"

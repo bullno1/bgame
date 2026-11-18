@@ -1,0 +1,30 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+RELOADABLE=OFF
+. "${CMD_DIR}/../common.sh"
+. "${CMD_DIR}/sdk.sh"
+
+OUT=".build/appimage/${BUILD_DIR}"
+BIN="bin/appimage/${BUILD_DIR}"
+mkdir -p .build/appimage
+
+if [ ! -f "${OUT}/build.ninja" ]
+then
+	appimagesdk cmake \
+		-G "Ninja" \
+		-S . \
+		-B "${OUT}" \
+		-DCMAKE_TOOLCHAIN_FILE="${BGAME_DIR}/cmake/appimage.cmake" \
+		-DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+		-DRELOADABLE=OFF \
+		-DPLATFORM_NAME="appimage" \
+		-DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_C_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+fi
+
+appimagesdk cmake --build "${OUT}"
+appimagesdk "${BGAME_DIR}/cmd/appimage/pack" \
+	"${OUT}" "${BIN}" "${APP}" "${APP_IMAGE_DIR}" "${APP_IMAGE_BUNDLE}"

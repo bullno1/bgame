@@ -1,0 +1,15 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+. "${CMD_DIR}/sdk.sh"
+
+appimagesdk_image
+mkdir -p ~/.cache/ccache
+podman run \
+	--rm \
+	-it \
+	-v ~/.cache/ccache:/root/.cache/ccache \
+	-e CCACHE_DIR=/root/.cache/ccache \
+	-v "$(pwd)":/workspace \
+	-w /workspace \
+	"${BUILD_IMAGE}"

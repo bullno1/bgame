@@ -8,6 +8,8 @@
 #   TRANSLATIONS_DIR=assets/i18n   # the .po files, which extract merges the catalog into
 #   POT=i18n/my-game.pot           # the catalog extract writes, for translators and tools
 #   EXTRACT_DIRS="src"             # directories whose units extract scans for translatable text
+#   APP_IMAGE_DIR="appimage"       # the directory with files for appimage packaging
+#   APP_IMAGE_BUNDLE=""libcrypto.so.* libzstd.so.* libbrotli*.so.*"  # Bundled libraries
 #
 # Overridable through the environment: BUILD_TYPE (RelWithDebInfo), RELOADABLE (ON).
 
@@ -24,6 +26,8 @@ WATCH_DIRS=${WATCH_DIRS:-src deps}
 TRANSLATIONS_DIR=${TRANSLATIONS_DIR:-assets/i18n}
 POT=${POT:-i18n/${APP}.pot}
 EXTRACT_DIRS=${EXTRACT_DIRS:-src}
+APP_IMAGE_DIR=${APP_IMAGE_DIR:-packaging/appimage}
+APP_IMAGE_BUNDLE=${APP_IMAGE_BUNDLE-"libcrypto.so.* libzstd.so.* libbrotli*.so.*"}
 
 BUILD_TYPE=${BUILD_TYPE:-RelWithDebInfo}
 RELOADABLE=${RELOADABLE:-ON}

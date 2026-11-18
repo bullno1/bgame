@@ -51,6 +51,7 @@ function (add_bgame_app NAME SOURCES)
 	else ()
 		add_executable(${NAME} ${SOURCES})
 		target_link_libraries(${NAME} PRIVATE bgame bgame-loader-stub bgame-loader)
+		install(TARGETS ${NAME} RUNTIME DESTINATION bin COMPONENT bgame-app)
 	endif ()
 
 	if (EMSCRIPTEN)
@@ -92,6 +93,7 @@ function (bgame_pack_assets OUTPUT DIR)
 		VERBATIM
 	)
 	add_custom_target(pack-${NAME} ALL DEPENDS "${OUTPUT}")
+	install(FILES "${OUTPUT}" DESTINATION bin COMPONENT bgame-app)
 endfunction ()
 
 # compile_<type>_shader(INPUT VAR_NAME OUTPUT [INCLUDE_DIRS <dir>...] [DEFINES <name>[=<value>]...] [DEPENDS <file>...])

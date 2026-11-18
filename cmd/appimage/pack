@@ -1,0 +1,102 @@
+#!/bin/sh -e
+
+if [ "$#" -ne 5 ]
+then
+	echo "usage: $0 <build dir> <bin dir> <app> <app image dir> <bundle patterns>" >&2
+	exit 1
+fi
+
+OUT=$1
+BIN=$2
+APP=$3
+APP_IMAGE_DIR=$4
+APP_IMAGE_BUNDLE=$5
+
+CMD_DIR=$(dirname "$0")
+APPDIR="${OUT}/AppDir"
+ARCH=$(uname -m)
+OUTPUT="${BIN}/${APP}-${ARCH}.AppImage"
+
+set -f
+
+rm -rf "${APPDIR}"
+cmake --install "${OUT}" --component bgame-app --prefix "${APPDIR}/usr" > /dev/null
+if [ ! -x "${APPDIR}/usr/bin/${APP}" ]
+then
+	echo "${APP} was not installed into ${APPDIR}/usr/bin" >&2
+	exit 1
+fi
+mkdir -p "${APPDIR}/usr/lib"
+
+ldd "${APPDIR}/usr/bin/${APP}" | while read -r NAME ARROW LIB REST
+do
+	if [ "${ARROW}" != "=>" ] || [ ! -f "${LIB}" ]
+	then
+		continue
+	fi
+	for PATTERN in ${APP_IMAGE_BUNDLE}
+	do
+		case "${NAME}" in
+			${PATTERN})
+				cp -L "${LIB}" "${APPDIR}/usr/lib/${NAME}"
+				chmod u+w "${APPDIR}/usr/lib/${NAME}"
+				patchelf --set-rpath '$ORIGIN' "${APPDIR}/usr/lib/${NAME}"
+				echo "Bundled ${NAME} from ${LIB}"
+				break
+				;;
+		esac
+	done
+done
+
+DESKTOP="${APPDIR}/${APP}.desktop"
+if [ -f "${APP_IMAGE_DIR}/${APP}.desktop" ]
+then
+	cp "${APP_IMAGE_DIR}/${APP}.desktop" "${DESKTOP}"
+else
+	echo "${APP_IMAGE_DIR}/${APP}.desktop not found, generating one"
+	printf '%s\n' \
+		'[Desktop Entry]' \
+		'Type=Application' \
+		"Name=${APP}" \
+		"Exec=${APP}" \
+		"Icon=${APP}" \
+		'Categories=Game;' \
+		> "${DESKTOP}"
+fi
+
+EXEC=$(sed -n 's/^Exec=//p' "${DESKTOP}" | head -n 1)
+if [ "${EXEC%% *}" != "${APP}" ]
+then
+	echo "${APP}.desktop: Exec must start with ${APP}, found '${EXEC}'" >&2
+	exit 1
+fi
+
+ICON=$(sed -n 's/^Icon=//p' "${DESKTOP}" | head -n 1)
+if [ -z "${ICON}" ]
+then
+	echo "${APP}.desktop: Icon is missing" >&2
+	exit 1
+fi
+
+ICON_FILE=
+for EXT in png svg
+do
+	if [ -f "${APP_IMAGE_DIR}/${ICON}.${EXT}" ]
+	then
+		ICON_FILE="${ICON}.${EXT}"
+		cp "${APP_IMAGE_DIR}/${ICON_FILE}" "${APPDIR}/${ICON_FILE}"
+		break
+	fi
+done
+if [ -z "${ICON_FILE}" ]
+then
+	echo "${APP_IMAGE_DIR}/${ICON}.png not found, using the default icon"
+	ICON_FILE="${ICON}.png"
+	cp "${CMD_DIR}/icon.png" "${APPDIR}/${ICON_FILE}"
+fi
+ln -s "${ICON_FILE}" "${APPDIR}/.DirIcon"
+ln -s "usr/bin/${APP}" "${APPDIR}/AppRun"
+
+rm -f "${OUTPUT}"
+ARCH="${ARCH}" appimagetool --no-appstream "${APPDIR}" "${OUTPUT}"
+echo "Packed ${OUTPUT}"

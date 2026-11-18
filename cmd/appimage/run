@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+CMD_DIR=$(dirname "$0")
+RELOADABLE=OFF
+. "${CMD_DIR}/../common.sh"
+
+exec "bin/appimage/${BUILD_DIR}/${APP}-$(uname -m).AppImage" "$@"
