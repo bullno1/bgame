@@ -6,6 +6,7 @@
 #include "app.h"
 
 extern const char* bgame_entry_file;
+extern const bgame_app_t* bgame_entry_app;
 
 #define BGAME_APP \
 	extern bgame_app_t bgame_app; \
@@ -25,6 +26,7 @@ bgame_project_file(const char* file);
 #define BGAME_ENTRYPOINT(APP) \
 	void remodule_entry(remodule_op_t op, void* userdata) { \
 		bgame_entry_file = __FILE__; \
+		bgame_entry_app = &APP; \
 		bgame_remodule(APP, op, userdata); \
 	}
 
@@ -38,6 +40,7 @@ bgame_remodule(bgame_app_t app, remodule_op_t op, void* userdata);
 #define BGAME_ENTRYPOINT(APP) \
 	SDL_AppResult SDLCALL SDL_AppInit(void** appstate, int argc, char* argv[]) { \
 		bgame_entry_file = __FILE__; \
+		bgame_entry_app = &APP; \
 		*appstate = &APP; \
 		return bgame_static(&APP, argc, (const char**)argv); \
 	}
