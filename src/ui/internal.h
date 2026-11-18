@@ -54,6 +54,7 @@ struct bgame_ui_node_s {
 	bool clipped_out;
 	/*! A floating element whose target is nowhere */
 	bool hidden;
+	bool flex_frozen;
 
 	// Transition
 	bgame_ui_transition_record_t* transition;

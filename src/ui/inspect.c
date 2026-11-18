@@ -264,12 +264,25 @@ open_in_editor(bgame_ui_loc_t loc) {
 // Names {{{
 
 const char*
-bgame_ui_sizing_name(bgame_ui_sizing_type_t type) {
-	switch (type) {
-		case BGAME_UI_SIZING_FIT: return "fit";
-		case BGAME_UI_SIZING_GROW: return "grow";
-		case BGAME_UI_SIZING_FIXED: return "fixed";
-		case BGAME_UI_SIZING_PERCENT: return "percent";
+bgame_ui_sizing_name(const bgame_ui_sizing_t* sizing) {
+	if (sizing->grow == 1.f && sizing->basis == BGAME_UI_BASIS_ZERO) { return "grow"; }
+	if (sizing->grow != 0.f) { return "flex"; }
+	switch (sizing->basis) {
+		case BGAME_UI_BASIS_FIT: return "fit";
+		case BGAME_UI_BASIS_ZERO: return "flex";
+		case BGAME_UI_BASIS_VALUE: return "fixed";
+		case BGAME_UI_BASIS_PERCENT: return "percent";
+	}
+	return "?";
+}
+
+const char*
+bgame_ui_basis_name(bgame_ui_basis_t basis) {
+	switch (basis) {
+		case BGAME_UI_BASIS_FIT: return "fit";
+		case BGAME_UI_BASIS_ZERO: return "zero";
+		case BGAME_UI_BASIS_VALUE: return "value";
+		case BGAME_UI_BASIS_PERCENT: return "percent";
 	}
 	return "?";
 }

@@ -135,7 +135,10 @@ void
 bgame_ui_inspect_hover(bgame_ui_id_t id);
 
 const char*
-bgame_ui_sizing_name(bgame_ui_sizing_type_t type);
+bgame_ui_sizing_name(const bgame_ui_sizing_t* sizing);
+
+const char*
+bgame_ui_basis_name(bgame_ui_basis_t basis);
 
 const char*
 bgame_ui_align_name(bgame_ui_align_t align);

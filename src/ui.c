@@ -526,8 +526,7 @@ compute_node_min(bgame_ui_node_t* node, int axis) {
 	float fit = children_extent(node, axis, true);
 	if (node->decl.content.measure != NULL) {
 		if (axis == AXIS_X) {
-			// Content drives the width only when asked to; a growing width wraps it instead
-			if (sizing->type == BGAME_UI_SIZING_FIT) {
+			if (sizing->basis == BGAME_UI_BASIS_FIT) {
 				node->content_size = node->decl.content.measure(FLT_MAX, node->decl.content.userdata);
 				fit = BMAX(fit, node->content_size.width);
 			}
@@ -537,16 +536,16 @@ compute_node_min(bgame_ui_node_t* node, int axis) {
 	}
 	fit += node_padding_sum(node, axis);
 
-	switch (sizing->type) {
-		case BGAME_UI_SIZING_FIXED:
-			node->min_size[axis] = BMAX(sizing->value, 0.f);
-			break;
-		case BGAME_UI_SIZING_PERCENT:
-			node->min_size[axis] = 0.f;
-			break;
-		case BGAME_UI_SIZING_FIT:
-		case BGAME_UI_SIZING_GROW:
+	switch (sizing->basis) {
+		case BGAME_UI_BASIS_FIT:
+		case BGAME_UI_BASIS_ZERO:
 			node->min_size[axis] = clamp_size(fit, sizing);
+			break;
+		case BGAME_UI_BASIS_VALUE:
+			node->min_size[axis] = clamp_size(sizing->value, sizing);
+			break;
+		case BGAME_UI_BASIS_PERCENT:
+			node->min_size[axis] = 0.f;
 			break;
 	}
 }
@@ -555,61 +554,100 @@ compute_node_min(bgame_ui_node_t* node, int axis) {
 static float
 child_base_size(const bgame_ui_node_t* child, int axis, float inner, bool along) {
 	const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
-	switch (sizing->type) {
-		case BGAME_UI_SIZING_FIXED: return BMAX(sizing->value, 0.f);
-		case BGAME_UI_SIZING_FIT: return child->min_size[axis];
-		case BGAME_UI_SIZING_PERCENT: return clamp_size(sizing->value * inner, sizing);
-		case BGAME_UI_SIZING_GROW: return along ? child->min_size[axis] : clamp_size(inner, sizing);
-	}
-	return 0.f;
+	float floor = sizing->basis == BGAME_UI_BASIS_PERCENT
+		? clamp_size(sizing->value * inner, sizing)
+		: child->min_size[axis];
+	if (along) { return floor; }
+
+	float base = sizing->basis == BGAME_UI_BASIS_ZERO ? 0.f : floor;
+	float share = BMAX(BMIN(sizing->grow, 1.f), 0.f);
+	return clamp_size(base + share * BMAX(inner - base, 0.f), sizing);
 }
 
 static bool
-child_grows(const bgame_ui_node_t* child, int axis) {
-	return node_in_flow(child) && node_sizing(child, axis)->type == BGAME_UI_SIZING_GROW;
+child_flexes(const bgame_ui_node_t* child, int axis) {
+	const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
+	return node_in_flow(child) && sizing->grow > 0.f;
 }
 
-/*! Hand the slack to the growing children, the smallest first so they even out */
+static bool
+child_yields(const bgame_ui_node_t* child, int axis) {
+	const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
+	return node_in_flow(child) && sizing->basis == BGAME_UI_BASIS_ZERO;
+}
+
+static float
+flex_base(const bgame_ui_node_t* child, int axis, float inner) {
+	if (node_sizing(child, axis)->basis == BGAME_UI_BASIS_ZERO) { return 0.f; }
+	return child_base_size(child, axis, inner, true);
+}
+
+static float
+flex_target(const bgame_ui_node_t* child, int axis, float inner, float free_space, float total_grow) {
+	return flex_base(child, axis, inner) + free_space * node_sizing(child, axis)->grow / total_grow;
+}
+
+static float
+flex_clamp(const bgame_ui_node_t* child, int axis, float inner, float size) {
+	float max = node_sizing(child, axis)->max;
+	if (max > 0.f && size > max) { size = max; }
+	return BMAX(size, child_base_size(child, axis, inner, true));
+}
+
 static void
-distribute_child_slack(bgame_ui_node_t* node, int axis, float remaining) {
-	while (remaining > EPSILON) {
-		float smallest = FLT_MAX;
-		float second = FLT_MAX;
-		int count = 0;
+distribute_child_slack(bgame_ui_node_t* node, int axis, float inner, float space) {
+	float initial_free = space;
+	int num_unfrozen = 0;
+	for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+		if (!node_in_flow(child)) { continue; }
+		child->flex_frozen = !child_flexes(child, axis);
+		initial_free -= child->flex_frozen ? child->size[axis] : flex_base(child, axis, inner);
+		if (!child->flex_frozen) { ++num_unfrozen; }
+	}
+
+	while (num_unfrozen > 0) {
+		float free_space = space;
+		float total_grow = 0.f;
 		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
-			if (!child_grows(child, axis)) { continue; }
-			const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
-			float size = child->size[axis];
-			if (sizing->max > 0.f && size >= sizing->max - EPSILON) { continue; }
-			if (size < smallest - EPSILON) {
-				second = smallest;
-				smallest = size;
-				count = 1;
-			} else if (size < smallest + EPSILON) {
-				++count;
-			} else if (size < second) {
-				second = size;
+			if (!node_in_flow(child)) { continue; }
+			if (child->flex_frozen) {
+				free_space -= child->size[axis];
+			} else {
+				free_space -= flex_base(child, axis, inner);
+				total_grow += node_sizing(child, axis)->grow;
 			}
 		}
-		if (count == 0) { break; }
-
-		float step = BMIN(second - smallest, remaining / (float)count);
-		float given = 0.f;
-		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
-			if (!child_grows(child, axis)) { continue; }
-			if (fabsf(child->size[axis] - smallest) > EPSILON) { continue; }
-			const bgame_ui_sizing_t* sizing = node_sizing(child, axis);
-			float add = step;
-			if (sizing->max > 0.f) { add = BMIN(add, sizing->max - child->size[axis]); }
-			child->size[axis] += add;
-			given += add;
+		if (total_grow < 1.f) {
+			float scaled = initial_free * total_grow;
+			if (fabsf(scaled) < fabsf(free_space)) { free_space = scaled; }
 		}
-		remaining -= given;
-		if (given <= EPSILON) { break; }
+
+		float violation = 0.f;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!node_in_flow(child) || child->flex_frozen) { continue; }
+			float target = flex_target(child, axis, inner, free_space, total_grow);
+			child->size[axis] = flex_clamp(child, axis, inner, target);
+			violation += child->size[axis] - target;
+		}
+
+		bool settled = !(fabsf(violation) > EPSILON);
+		int num_frozen = 0;
+		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
+			if (!node_in_flow(child) || child->flex_frozen) { continue; }
+			float target = flex_target(child, axis, inner, free_space, total_grow);
+			bool freeze = settled
+				|| (violation > 0.f && child->size[axis] > target)
+				|| (violation < 0.f && child->size[axis] < target);
+			if (freeze) {
+				child->flex_frozen = true;
+				++num_frozen;
+			}
+		}
+		if (num_frozen == 0) { break; }
+		num_unfrozen -= num_frozen;
 	}
 }
 
-/*! Take the overflow from the growing children, the largest first, down to their min */
 static void
 absorb_child_overflow(bgame_ui_node_t* node, int axis, float overflow) {
 	while (overflow > EPSILON) {
@@ -617,7 +655,7 @@ absorb_child_overflow(bgame_ui_node_t* node, int axis, float overflow) {
 		float second = -FLT_MAX;
 		int count = 0;
 		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
-			if (!child_grows(child, axis)) { continue; }
+			if (!child_yields(child, axis)) { continue; }
 			float size = child->size[axis];
 			if (size <= node_sizing(child, axis)->min + EPSILON) { continue; }
 			if (size > largest + EPSILON) {
@@ -635,7 +673,7 @@ absorb_child_overflow(bgame_ui_node_t* node, int axis, float overflow) {
 		float step = BMIN(largest - BMAX(second, 0.f), overflow / (float)count);
 		float taken = 0.f;
 		for (bgame_ui_node_t* child = node->first_child; child != NULL; child = child->next_sibling) {
-			if (!child_grows(child, axis)) { continue; }
+			if (!child_yields(child, axis)) { continue; }
 			if (fabsf(child->size[axis] - largest) > EPSILON) { continue; }
 			float floor = node_sizing(child, axis)->min;
 			float take = BMIN(step, child->size[axis] - floor);
@@ -665,10 +703,10 @@ resolve_node_size(bgame_ui_node_t* node, int axis, float size) {
 	if (count == 0) { return; }
 
 	if (along) {
-		total += node->decl.layout.child_gap * (float)(count - 1);
-		float remaining = inner - total;
+		float space = inner - node->decl.layout.child_gap * (float)(count - 1);
+		float remaining = space - total;
 		if (remaining > EPSILON) {
-			distribute_child_slack(node, axis, remaining);
+			distribute_child_slack(node, axis, inner, space);
 		} else if (remaining < -EPSILON) {
 			absorb_child_overflow(node, axis, -remaining);
 		}

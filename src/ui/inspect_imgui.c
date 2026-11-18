@@ -54,7 +54,18 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 
 static void
 draw_sizing(const char* label, const bgame_ui_sizing_t* sizing) {
-	ImGui_LabelText(label, "%s %.1f [%.0f, %.0f]", bgame_ui_sizing_name(sizing->type), sizing->value, sizing->min, sizing->max);
+	bool preset = sizing->grow == 0.f
+		? sizing->basis != BGAME_UI_BASIS_ZERO
+		: sizing->grow == 1.f && sizing->basis == BGAME_UI_BASIS_ZERO;
+	if (!preset) {
+		ImGui_LabelText(
+			label, "%s %.1f [%.0f, %.0f] grow %.2f basis %s",
+			bgame_ui_sizing_name(sizing), sizing->value, sizing->min, sizing->max,
+			sizing->grow, bgame_ui_basis_name(sizing->basis)
+		);
+	} else {
+		ImGui_LabelText(label, "%s %.1f [%.0f, %.0f]", bgame_ui_sizing_name(sizing), sizing->value, sizing->min, sizing->max);
+	}
 }
 
 static void

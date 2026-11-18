@@ -37,28 +37,53 @@ typedef struct {
 
 // Layout {{{
 
+/**
+ * How the initial size of an element is calculated.
+ *
+ * In short, to layout an element, the library first initializes it to a certain size.
+ * Then the element can be inflated or shrunk based on several factors: parent's
+ * spare space, size bounds, grow factor...
+ *
+ * This type determines how this initial size is calculated.
+ */
 typedef enum {
-	/*! As large as the content, within min and max */
-	BGAME_UI_SIZING_FIT = 0,
-	/*! A share of what the parent has left, within min and max */
-	BGAME_UI_SIZING_GROW,
-	/*! Pixels */
-	BGAME_UI_SIZING_FIXED,
-	/*! A fraction of the parent, 0 to 1 */
-	BGAME_UI_SIZING_PERCENT,
-} bgame_ui_sizing_type_t;
+	/*! Start with a size big enough to fit the element's own content (with padding) and its children */
+	BGAME_UI_BASIS_FIT = 0,
+	/*! Start from 0 */
+	BGAME_UI_BASIS_ZERO,
+	/*! Start with @ref bgame_ui_sizing_t::value as an absolute size */
+	BGAME_UI_BASIS_VALUE,
+	/*! Start with @ref bgame_ui_sizing_t::value as a portion of the parent's size */
+	BGAME_UI_BASIS_PERCENT,
+} bgame_ui_basis_t;
 
+/**
+ * How an element is sized
+ */
 typedef struct {
-	bgame_ui_sizing_type_t type;
+	/*! Refer to @ref bgame_ui_basis_t */
+	bgame_ui_basis_t basis;
+	/*! The meaning is dependent on @ref bgame_ui_sizing_t::basis */
 	float value;
 	/*! 0 for no bound */
 	float min, max;
+	/**
+	 * How much the element can grow.
+	 *
+	 * The value is unitless and interpreted as a weight:
+	 *
+	 * - `0.0f` means no growth.
+	 * - An element with `grow = 2.0f` will claim twice as much free space
+	 *   compared to an element with `grow = 1.0f`.
+	 */
+	float grow;
 } bgame_ui_sizing_t;
 
-#define BUI_FIT(...)   ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_FIT, __VA_ARGS__ })
-#define BUI_GROW(...)  ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_GROW, __VA_ARGS__ })
-#define BUI_FIXED(V)   ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_FIXED, .value = (V) })
-#define BUI_PERCENT(V) ((bgame_ui_sizing_t){ .type = BGAME_UI_SIZING_PERCENT, .value = (V) })
+#define BUI_FLEX(...)  ((bgame_ui_sizing_t){ __VA_ARGS__ })
+#define BUI_FIT(...)   BUI_FLEX(.basis = BGAME_UI_BASIS_FIT, .grow = 0.f, __VA_ARGS__)
+#define BUI_GROW(...)  BUI_FLEX(.basis = BGAME_UI_BASIS_ZERO, .grow = 1.f, __VA_ARGS__)
+#define BUI_FIXED(V)   BUI_FLEX(.basis = BGAME_UI_BASIS_VALUE, .value = (V), .grow = 0.f)
+#define BUI_PERCENT(V) BUI_FLEX(.basis = BGAME_UI_BASIS_PERCENT, .value = (V), .grow = 0.f)
 
 typedef enum {
 	BGAME_UI_LEFT_TO_RIGHT = 0,
