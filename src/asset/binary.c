@@ -38,6 +38,6 @@ BGAME_ASSET_TYPE(binary) = {
 };
 
 bgame_binary_t*
-bgame_load_binary(struct bgame_asset_bundle_s* bundle, const char* path) {
+bgame_load_binary(bgame_asset_bundle_t* bundle, const char* path) {
 	return bgame_asset_load(bundle, &binary, path);
 }
