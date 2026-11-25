@@ -2,12 +2,9 @@
 #include "../internal.h"
 #include <bgame/reloadable.h>
 #include <bgame/shader.h>
-#include <bfmt_log.h>
 #include <cute_app.h>
 #include <cute_draw.h>
 #include "gen/overlay_shd.h"
-
-#define MAX_POSE_DEPTH 32
 
 BGAME_VAR(CF_Shader, ui_overlay_shader) = { 0 };
 
@@ -68,8 +65,8 @@ bgame_ui_render(void) {
 
 	// Poses are in UI space, y down; the drawing space under the translation is y up
 	CF_M3x2 flip = cf_make_scale(cf_v2(1.f, -1.f));
-	float opacity[MAX_POSE_DEPTH + 1] = { 1.f };
-	int depth = 0;
+	cf_draw_push_shader(ui_overlay_shader);
+	cf_draw_push_vertex_attributes(1.f, 1.f, 1.f, 1.f);
 
 	for (int i = 0; i < count; ++i) {
 		const bgame_ui_command_t* command = &commands[i];
@@ -84,27 +81,15 @@ bgame_ui_render(void) {
 				cf_draw_pop_scissor();
 				break;
 			case BGAME_UI_CMD_POSE_BEGIN: {
-				if (depth >= MAX_POSE_DEPTH) {
-					BFMT_ERROR("UI poses nested deeper than ", MAX_POSE_DEPTH);
-					break;
-				}
 				cf_draw_push();
 				cf_draw_transform(cf_mul_m32(cf_mul_m32(flip, command->pose.transform), flip));
-				float o = opacity[depth] * command->pose.opacity;
-				opacity[++depth] = o;
+				float o = cf_draw_peek_vertex_attributes().a * command->pose.opacity;
 				// Colors are premultiplied, so every channel scales
-				cf_draw_push_shader(ui_overlay_shader);
-				cf_draw_set_uniform_color("u_overlay_color", cf_make_color_rgba_f(o, o, o, o));
+				cf_draw_push_vertex_attributes(o, o, o, o);
 			} break;
 			case BGAME_UI_CMD_POSE_END:
-				if (depth == 0) { break; }
-				--depth;
-				cf_draw_pop_shader();
+				cf_draw_pop_vertex_attributes();
 				cf_draw_pop();
-				if (depth > 0) {
-					float o = opacity[depth];
-					cf_draw_set_uniform_color("u_overlay_color", cf_make_color_rgba_f(o, o, o, o));
-				}
 				break;
 			case BGAME_UI_CMD_HIGHLIGHT:
 				draw_highlight(&command->box);
@@ -112,5 +97,7 @@ bgame_ui_render(void) {
 		}
 	}
 
+	cf_draw_pop_vertex_attributes();
+	cf_draw_pop_shader();
 	cf_draw_pop();
 }
