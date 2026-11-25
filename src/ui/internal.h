@@ -14,6 +14,7 @@ typedef struct {
 	float elapsed;
 	bgame_ui_transition_phase_t phase;
 	bool exiting;
+	float glide_elapsed;
 } bgame_ui_transition_record_t;
 
 struct bgame_ui_node_s {

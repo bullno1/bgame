@@ -955,23 +955,24 @@ run_transitions(bgame_ui_tree_t* tree) {
 				.target = target,
 				.displayed = target,
 				.phase = BGAME_UI_TRANSITION_ENTERING,
+				.glide_elapsed = tr->duration,
 			};
 		} else {
 			*rec = *previous;
 			rec->elapsed += dt;
+			rec->glide_elapsed += dt;
 			// A reversal mid-phase picks up where the other phase was, so mirrored poses meet
 			float done = tr->duration > 0.f ? BMIN(previous->elapsed / tr->duration, 1.f) : 1.f;
 			if (exiting && !previous->exiting) {
 				rec->phase = BGAME_UI_TRANSITION_EXITING;
 				rec->elapsed = previous->phase == BGAME_UI_TRANSITION_ENTERING ? tr->duration * (1.f - done) : 0.f;
-				rec->initial = previous->displayed;
 			} else if (!exiting && previous->phase == BGAME_UI_TRANSITION_EXITING) {
 				rec->phase = done < 1.f ? BGAME_UI_TRANSITION_ENTERING : BGAME_UI_TRANSITION_IDLE;
 				rec->elapsed = tr->duration * (1.f - done);
-				rec->initial = previous->displayed;
 			}
 			if (!rect_equal(target, previous->target)) {
 				rec->initial = previous->displayed;
+				rec->glide_elapsed = 0.f;
 				if (rec->phase == BGAME_UI_TRANSITION_IDLE || rec->phase == BGAME_UI_TRANSITION_MOVING) {
 					rec->phase = BGAME_UI_TRANSITION_MOVING;
 					rec->elapsed = 0.f;
@@ -982,15 +983,26 @@ run_transitions(bgame_ui_tree_t* tree) {
 		rec->exiting = exiting;
 
 		float progress = tr->duration > 0.f ? BMIN(rec->elapsed / tr->duration, 1.f) : 1.f;
+		float glide = tr->duration > 0.f ? BMIN(rec->glide_elapsed / tr->duration, 1.f) : 1.f;
 		bgame_ui_curve_fn_t curve = tr->curve != NULL ? tr->curve : cf_smoothstep;
 		float t = curve(progress);
-		rec->displayed = rect_lerp(rec->initial, rec->target, t);
+		if (glide >= 1.f) {
+			rec->initial = rec->target;
+			rec->displayed = rec->target;
+		} else {
+			rec->displayed = rect_lerp(rec->initial, rec->target, curve(glide));
+		}
 		if (
 			progress >= 1.f
 			&& (rec->phase == BGAME_UI_TRANSITION_MOVING || rec->phase == BGAME_UI_TRANSITION_ENTERING)
 		) {
-			rec->phase = BGAME_UI_TRANSITION_IDLE;
-			rec->initial = rec->target;
+			if (glide < 1.f) {
+				rec->phase = BGAME_UI_TRANSITION_MOVING;
+				rec->elapsed = rec->glide_elapsed;
+				progress = glide;
+			} else {
+				rec->phase = BGAME_UI_TRANSITION_IDLE;
+			}
 		}
 
 		node->transition = rec;
