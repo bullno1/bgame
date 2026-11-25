@@ -1109,27 +1109,27 @@ emit_tree_commands(bgame_ui_tree_t* tree) {
 // Hover {{{
 
 static bool
-node_hoverable_at(const bgame_ui_node_t* node, CF_V2 p) {
-	return !node->hidden && !node->unhoverable && rect_contains(node->clip, p);
+node_under(const bgame_ui_node_t* node, CF_V2 p, bool drawn) {
+	if (node->hidden || !rect_contains(node->clip, p)) { return false; }
+	return drawn || !node->unhoverable;
 }
 
 /*! The chain of containing elements down from one, the last declared sibling first */
 static int
-descend_over_chain(const bgame_ui_node_t* node, CF_V2 p, bgame_ui_id_t* out, int count) {
+descend_over_chain(const bgame_ui_node_t* node, CF_V2 p, bool drawn, bgame_ui_id_t* out, int count) {
 	out[count++] = node->id;
 	for (bgame_ui_node_t* child = node->last_child; child != NULL; child = child->prev_sibling) {
-		if (node_in_flow(child) && node_hoverable_at(child, p)) {
-			return descend_over_chain(child, p, out, count);
+		if (node_in_flow(child) && node_under(child, p, drawn)) {
+			return descend_over_chain(child, p, drawn, out, count);
 		}
 	}
 	return count;
 }
 
-static void
-compute_over_list(bgame_ui_tree_t* tree, const bgame_ui_tree_t* previous, CF_V2 p) {
-	tree->over = NULL;
-	tree->num_over = 0;
-	if (previous == NULL) { return; }
+static int
+compute_over_chain(const bgame_ui_tree_t* previous, CF_V2 p, bool drawn, const bgame_ui_id_t** chain) {
+	*chain = NULL;
+	if (previous == NULL) { return 0; }
 
 	// Deep enough for any chain
 	bgame_ui_id_t* out = bgame_alloc_for_frame(
@@ -1140,18 +1140,18 @@ compute_over_list(bgame_ui_tree_t* tree, const bgame_ui_tree_t* previous, CF_V2 
 	// Floating subtrees cover the flow; the topmost one under the pointer takes it
 	for (int i = previous->num_floating - 1; i >= 0; --i) {
 		const bgame_ui_node_t* root = previous->floating[i];
-		if (root->decl.floating.passthrough || !node_hoverable_at(root, p)) { continue; }
-		tree->over = out;
-		tree->num_over = descend_over_chain(root, p, out, 0);
-		return;
+		if (root->decl.floating.passthrough && !drawn) { continue; }
+		if (!node_under(root, p, drawn)) { continue; }
+		*chain = out;
+		return descend_over_chain(root, p, drawn, out, 0);
 	}
 	for (bgame_ui_node_t* child = previous->root.last_child; child != NULL; child = child->prev_sibling) {
-		if (node_in_flow(child) && node_hoverable_at(child, p)) {
-			tree->over = out;
-			tree->num_over = descend_over_chain(child, p, out, 0);
-			return;
+		if (node_in_flow(child) && node_under(child, p, drawn)) {
+			*chain = out;
+			return descend_over_chain(child, p, drawn, out, 0);
 		}
 	}
+	return 0;
 }
 
 // }}}
@@ -1238,10 +1238,15 @@ bgame_ui_begin(const bgame_ui_frame_t* frame) {
 	bhamt_init(&tree->transitions, NULL, NULL);
 	ui_current = tree;
 
-	compute_over_list(tree, ui_previous, input.pointer);
+	tree->num_over = compute_over_chain(ui_previous, input.pointer, false, &tree->over);
 	bool moved = ui_previous != NULL
 		&& (ui_previous->input.pointer.x != input.pointer.x || ui_previous->input.pointer.y != input.pointer.y);
-	if (bgame_ui_inspect_frame(&input, tree->over, tree->num_over)) {
+	const bgame_ui_id_t* pick_over = tree->over;
+	int num_pick_over = tree->num_over;
+	if (bgame_ui_inspect_picking()) {
+		num_pick_over = compute_over_chain(ui_previous, input.pointer, true, &pick_over);
+	}
+	if (bgame_ui_inspect_frame(&input, pick_over, num_pick_over)) {
 		// The pick owns the pointer: the UI sees none
 		input.pointer = cf_v2(-1.f, -1.f);
 		input.pointer_down = false;
