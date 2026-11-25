@@ -56,6 +56,9 @@ bgame_end_str(void);
 #define bgame_translate_text(LOCALE, TEXT, ...) \
 	(bfmt_translate_text(bgame_begin_str(), LOCALE, TEXT __VA_OPT__(,) __VA_ARGS__), bgame_end_str())
 
+#define bgame_template(TEMPLATE, ...) \
+	(bfmt_template(bgame_begin_str(), TEMPLATE __VA_OPT__(,) __VA_ARGS__), bgame_end_str())
+
 static inline void*
 bgame_make_frame_copy(void* data, size_t size, size_t alignment) {
 	void* copy = bgame_alloc_for_frame(size, alignment);

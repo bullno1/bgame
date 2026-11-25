@@ -4,9 +4,8 @@
 #
 # The page cannot spawn a process, so opening a picked element in the editor
 # goes through this server: the page sends `POST /__open-in-editor?file=&line=`
-# and the server runs the BGAME_EDITOR template on this machine, with the rules
-# the native build uses (whitespace splits, double quotes group, `{file}` and
-# `{line}` are replaced). Only a file under the project root is opened, and
+# and the server runs the BGAME_EDITOR template on this machine.
+# Only a file under the project root is opened, and
 # only for a request from the page itself: the Host header must be this
 # server's, and a cross-site request (Origin or Sec-Fetch-Site says so) is
 # refused, so no other page in the browser can reach the editor.
@@ -51,7 +50,7 @@ while args:
 EDITOR_ENV = "BGAME_EDITOR"
 ENDPOINT = "/__open-in-editor"
 
-def split_command(text, file, line):
+def split_command(text, values):
 	args = []
 	i = 0
 	while i < len(text):
@@ -70,7 +69,7 @@ def split_command(text, file, line):
 			while i < len(text) and text[i] not in " \t\r\n":
 				i += 1
 			end = i
-		args.append(text[start:end].replace("{file}", file).replace("{line}", line))
+		args.append(text[start:end].format_map(values))
 	return args
 
 class Handler(SimpleHTTPRequestHandler):
@@ -136,7 +135,10 @@ class Handler(SimpleHTTPRequestHandler):
 			return HTTPStatus.FORBIDDEN, f"{file} is outside the project"
 		if not os.path.isfile(path):
 			return HTTPStatus.NOT_FOUND, f"{file} does not exist"
-		argv = split_command(template, path, line)
+		try:
+			argv = split_command(template, { "file": path, "line": int(line) })
+		except (LookupError, ValueError, AttributeError) as error:
+			return HTTPStatus.INTERNAL_SERVER_ERROR, f"{EDITOR_ENV} is not a valid template: {error!r}"
 		if not argv:
 			return HTTPStatus.NOT_IMPLEMENTED, f"{EDITOR_ENV} is empty"
 		try:

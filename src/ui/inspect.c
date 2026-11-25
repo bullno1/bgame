@@ -2,7 +2,6 @@
 #include <bgame/reloadable.h>
 #include <bgame/allocator/frame.h>
 #include <bfmt_log.h>
-#include <stdio.h>
 #include <string.h>
 #include <SDL3/SDL_stdinc.h>
 // The web has no processes to spawn: the page asks the server that serves it
@@ -162,54 +161,28 @@ bgame_ui_inspect_open(bgame_ui_loc_t loc) {
 
 #ifndef __EMSCRIPTEN__
 
-/*! `{file}` and `{line}` replaced, in the frame arena */
-static const char*
-expand_template(const char* arg, size_t len, bgame_ui_loc_t loc) {
-	char line[16];
-	int line_len = snprintf(line, sizeof(line), "%d", loc.line);
-	size_t file_len = strlen(loc.file);
-	// Every placeholder is 6 bytes, so this bounds the expansion
-	size_t capacity = len + 1 + (len / 6 + 1) * (file_len > (size_t)line_len ? file_len : (size_t)line_len);
-	char* out = bgame_alloc_for_frame(capacity, _Alignof(char));
-	size_t n = 0;
-	for (size_t i = 0; i < len;) {
-		if (len - i >= 6 && memcmp(arg + i, "{file}", 6) == 0) {
-			memcpy(out + n, loc.file, file_len);
-			n += file_len;
-			i += 6;
-		} else if (len - i >= 6 && memcmp(arg + i, "{line}", 6) == 0) {
-			memcpy(out + n, line, (size_t)line_len);
-			n += (size_t)line_len;
-			i += 6;
-		} else {
-			out[n++] = arg[i++];
-		}
-	}
-	out[n] = '\0';
-	return out;
-}
-
 /*! Whitespace separates arguments, double quotes group them */
 static int
-split_command(const char* text, size_t size, bgame_ui_loc_t loc, const char** args) {
+split_command(char* text, size_t size, bgame_ui_loc_t loc, const char** args) {
 	int count = 0;
 	size_t i = 0;
 	while (i < size && count < MAX_EDITOR_ARGS - 1) {
 		while (i < size && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' || text[i] == '\n')) { ++i; }
 		if (i >= size) { break; }
 		size_t start;
-		size_t len;
 		if (text[i] == '"') {
 			start = ++i;
 			while (i < size && text[i] != '"') { ++i; }
-			len = i - start;
-			if (i < size) { ++i; }
 		} else {
 			start = i;
 			while (i < size && text[i] != ' ' && text[i] != '\t' && text[i] != '\r' && text[i] != '\n') { ++i; }
-			len = i - start;
 		}
-		args[count++] = expand_template(text + start, len, loc);
+		text[i++] = '\0';
+		args[count++] = bgame_template(
+			text + start,
+			bfmt_named(file, loc.file),
+			bfmt_named(line, loc.line)
+		).chars;
 	}
 	args[count] = NULL;
 	return count;
@@ -240,10 +213,13 @@ open_in_editor(bgame_ui_loc_t loc) {
 #ifdef __EMSCRIPTEN__
 	bgame_ui__request_editor(loc.file, loc.line);
 #else
-	const char* text = SDL_getenv(BGAME_UI_EDITOR_ENV);
-	if (text == NULL) { return; }
+	const char* command = SDL_getenv(BGAME_UI_EDITOR_ENV);
+	if (command == NULL) { return; }
+	size_t size = strlen(command);
+	char* text = bgame_alloc_for_frame(size + 1, _Alignof(char));
+	memcpy(text, command, size + 1);
 	const char* args[MAX_EDITOR_ARGS];
-	int count = split_command(text, strlen(text), loc, args);
+	int count = split_command(text, size, loc, args);
 	if (count == 0) { return; }
 
 	SDL_PropertiesID props = SDL_CreateProperties();
