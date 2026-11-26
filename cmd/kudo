@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 """kudo - track attribution for third-party assets in game projects.
-
-A vendor directory holds packs exactly as downloaded. A manifest records which
-files you actually use and where they land. A linter verifies the filesystem
-still matches what the manifest claims. Credits are generated, never written
-by hand.
-
-Requires Python 3.11+ (stdlib only).
 """
 
 from __future__ import annotations
@@ -17,7 +10,6 @@ import hashlib
 import json
 import os
 import shutil
-import stat
 import sys
 import tomllib
 import urllib.error
@@ -28,7 +20,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import date
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 EXIT_OK = 0
 EXIT_DRIFT = 1
@@ -55,7 +47,6 @@ class Config:
     manifest: str = "kudo/manifest.jsonl"
     archive: str = "kudo/archive"
     roots: list[str] = field(default_factory=lambda: ["assets"])
-    mode: str = "copy"  # "copy" | "symlink"
     credits_output: str = "CREDITS.md"
     first_party: list[str] = field(default_factory=list)
 
@@ -93,10 +84,7 @@ def load_config() -> Config:
     unknown = set(section) - known
     if unknown:
         raise KudoError(f"unknown key(s) in {path}: {', '.join(sorted(unknown))}")
-    cfg = Config(root=path.parent, **section)
-    if cfg.mode not in ("copy", "symlink"):
-        raise KudoError(f"mode must be 'copy' or 'symlink', got {cfg.mode!r}")
-    return cfg
+    return Config(root=path.parent, **section)
 
 
 # --------------------------------------------------------------------------
@@ -106,16 +94,10 @@ def load_config() -> Config:
 
 @dataclass
 class Entry:
-    source: str  # relative to vendor dir, e.g. "kenney_platformer/tiles/block.png"
     dest: str  # relative to project root, e.g. "assets/sprites/block.png"
-    source_hash: str
-    modified: bool = False
+    pack: str
     note: str = ""
     added: str = ""
-
-    @property
-    def pack(self) -> str:
-        return self.source.split("/", 1)[0]
 
     def to_json(self) -> str:
         d = asdict(self)
@@ -137,17 +119,14 @@ def load_manifest(cfg: Config) -> list[Entry]:
             raw = json.loads(line)
         except json.JSONDecodeError as exc:
             raise KudoError(f"{path}:{lineno}: invalid JSON: {exc}") from exc
-        missing = {"source", "dest", "source_hash"} - set(raw)
+        if "pack" not in raw and "source" in raw:
+            raw["pack"] = str(raw["source"]).split("/", 1)[0]
+        missing = {"dest", "pack"} - set(raw)
         if missing:
             raise KudoError(f"{path}:{lineno}: missing field(s): {', '.join(sorted(missing))}")
         allowed = set(Entry.__dataclass_fields__)
         entries.append(Entry(**{k: v for k, v in raw.items() if k in allowed}))
     return entries
-
-
-def append_entry(cfg: Config, entry: Entry) -> None:
-    with cfg.manifest_path.open("a", encoding="utf-8") as fh:
-        fh.write(entry.to_json() + "\n")
 
 
 def rewrite_manifest(cfg: Config, entries: list[Entry]) -> None:
@@ -170,6 +149,10 @@ class Pack:
     @property
     def has_license(self) -> bool:
         return any((self.dir / n).exists() for n in LICENSE_NAMES)
+
+    @property
+    def requires_note(self) -> bool:
+        return bool(self.meta.get("require_note", False))
 
     def credit_line(self) -> str:
         if self.meta.get("attribution"):
@@ -201,6 +184,19 @@ def all_packs(cfg: Config) -> list[Pack]:
             if p:
                 out.append(p)
     return out
+
+
+def resolve_pack(cfg: Config, arg: str) -> Pack:
+    given = Path(os.path.abspath(arg))
+    vendor = Path(os.path.abspath(str(cfg.vendor_dir)))
+    name = given.name if given.parent == vendor else arg
+    pack = None
+    if name and Path(name).name == name and not name.startswith("."):
+        pack = load_pack(cfg, name)
+    if pack is None:
+        names = ", ".join(p.name for p in all_packs(cfg)) or "(none)"
+        raise KudoError(f"no such vendor pack: {arg}\npacks: {names}")
+    return pack
 
 
 def pack_files(pack: Pack) -> list[Path]:
@@ -277,60 +273,31 @@ def hash_file(path: Path) -> str:
     return "sha256:" + h.hexdigest()
 
 
-def set_readonly(path: Path) -> None:
-    if path.is_symlink():
-        return  # chmod would follow the link into vendor/
-    mode = path.stat().st_mode
-    path.chmod(mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
-
-
-def set_writable(path: Path) -> None:
-    if path.is_symlink():
-        return
-    mode = path.stat().st_mode
-    path.chmod(mode | stat.S_IWUSR)
-
-
-def is_readonly(path: Path) -> bool:
-    return not (path.stat().st_mode & stat.S_IWUSR)
-
-
-def materialize(cfg: Config, entry: Entry) -> None:
-    """Create the destination for an unmodified entry."""
-    src = cfg.vendor_dir / entry.source
-    dst = cfg.root / entry.dest
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    if dst.exists() or dst.is_symlink():
-        set_writable(dst) if dst.exists() and not dst.is_symlink() else None
-        dst.unlink()
-    if cfg.mode == "symlink":
-        rel = os.path.relpath(src, dst.parent)
-        dst.symlink_to(rel)
-        set_readonly(src)  # protect vendor from writes through the link
-    else:
-        shutil.copy2(src, dst)
-        set_readonly(dst)
-
-
-def unlink_dest(cfg: Config, entry: Entry) -> None:
-    dst = cfg.root / entry.dest
-    if dst.is_symlink():
-        dst.unlink()
-    elif dst.exists():
-        set_writable(dst)
-        dst.unlink()
-
-
 def rel_to_root(cfg: Config, path: Path) -> str:
     """Project-relative path, normalized lexically.
-
-    Deliberately not Path.resolve(): that follows symlinks, so a destination
-    that is already a managed link would resolve into vendor/ and we would
-    overwrite the original.
     """
     absolute = os.path.abspath(os.path.join(os.getcwd(), str(path)))
     root = os.path.abspath(str(cfg.root))
     return os.path.relpath(absolute, root).replace(os.sep, "/")
+
+
+def new_dest(cfg: Config, arg: str, taken: set[str]) -> str:
+    dest = rel_to_root(cfg, Path(arg))
+    if dest.startswith(".."):
+        raise KudoError(f"destination must be inside the project, got {arg}")
+    if dest == cfg.vendor or dest.startswith(cfg.vendor + "/"):
+        raise KudoError(f"{dest} is inside {cfg.vendor}/; a pack's own files are "
+                        "not assets of the project")
+    if dest in taken:
+        raise KudoError(f"{dest} is already in the manifest")
+    return dest
+
+
+def warn_outside_roots(cfg: Config, dest: str) -> None:
+    if not any(dest == r or dest.startswith(r.rstrip("/") + "/") for r in cfg.roots):
+        print(f"warning: {dest} is outside the managed roots {cfg.roots};"
+              " the linter will not look for unaccounted files next to it",
+              file=sys.stderr)
 
 
 # --------------------------------------------------------------------------
@@ -344,18 +311,16 @@ class Issue:
     code: str
     path: str
     message: str
-    fix: str = ""  # description of what --fix would do; empty = not fixable
 
 
 @dataclass
 class PackStat:
     name: str
-    used: int      # distinct vendor files referenced
-    entries: int   # manifest rows; exceeds `used` when one file is sliced
-    total: int
-    modified: int
+    assets: int
+    files: int
     bytes_total: int
     keep: bool
+    require_note: bool
     has_source: bool
     has_license: bool
 
@@ -365,7 +330,6 @@ def run_checks(cfg: Config, entries: list[Entry], deep: bool = False
     issues: list[Issue] = []
     packs = {p.name: p for p in all_packs(cfg)}
     used_by_pack: dict[str, list[Entry]] = {}
-    src_hashes: dict[str, str] = {}  # one hash per vendor file, not per entry
 
     seen_dest: dict[str, Entry] = {}
     for e in entries:
@@ -376,53 +340,20 @@ def run_checks(cfg: Config, entries: list[Entry], deep: bool = False
                                 "two manifest entries claim this destination"))
         seen_dest[e.dest] = e
 
-        # vendor side
-        if e.pack not in packs:
-            issues.append(Issue("error", "orphan-pack", e.source,
+        pack = packs.get(e.pack)
+        if pack is None:
+            issues.append(Issue("error", "orphan-pack", e.dest,
                                 f"vendor pack '{e.pack}' is missing"))
-            continue
-        src = cfg.vendor_dir / e.source
-        if not src.is_file():
-            issues.append(Issue("error", "missing-source", e.source,
-                                "source file no longer exists in vendor"))
-            continue
-        if e.source in src_hashes:
-            actual_src = src_hashes[e.source]
-        else:
-            actual_src = src_hashes[e.source] = hash_file(src)
-            if actual_src != e.source_hash:
-                dependents = [x.dest for x in entries if x.source == e.source]
-                detail = ("; derived files needing review: "
-                          + ", ".join(dependents)) if len(dependents) > 1 else ""
-                issues.append(Issue("error", "upstream-changed", e.source,
-                                    "vendor file differs from the recorded hash; the "
-                                    "pack was updated or edited in place" + detail))
+        elif pack.requires_note and not e.note:
+            issues.append(Issue("error", "no-note", e.dest,
+                                f"pack '{e.pack}' sets require_note and this asset "
+                                "has no note; say what was changed with "
+                                "'kudo note'"))
 
-        # destination side
-        dst = cfg.root / e.dest
-        if not dst.exists():
-            if e.modified:
-                issues.append(Issue("error", "missing-derived", e.dest,
-                                    "modified asset is gone and cannot be regenerated"))
-            else:
-                issues.append(Issue("error", "missing-dest", e.dest,
-                                    "destination missing", fix="re-materialize from vendor"))
-            continue
-
-        if e.modified:
-            if not e.note:
-                issues.append(Issue("warn", "no-note", e.dest,
-                                    "modified asset has no note; CC BY requires "
-                                    "indicating that changes were made"))
-        else:
-            if hash_file(dst) != actual_src:
-                issues.append(Issue("error", "unmanaged-edit", e.dest,
-                                    "destination differs from vendor source but is not "
-                                    "marked modified; run 'kudo edit' to declare it"))
-            elif not dst.is_symlink() and not is_readonly(dst):
-                issues.append(Issue("warn", "writable", e.dest,
-                                    "managed copy is writable",
-                                    fix="set read-only"))
+        if not (cfg.root / e.dest).is_file():
+            issues.append(Issue("error", "missing-dest", e.dest,
+                                "the file is gone; restore it, follow a rename with "
+                                "'kudo mv', or drop the entry with 'kudo rm'"))
 
     # unaccounted files under the managed roots
     declared = set(seen_dest)
@@ -477,38 +408,20 @@ def run_checks(cfg: Config, entries: list[Entry], deep: bool = False
                                 "import; it was replaced or has rotted"))
         if not used and not keep:
             issues.append(Issue("warn", "unused-pack", f"{cfg.vendor}/{name}",
-                                "no files used; safe to delete, or set keep = true"))
+                                "no assets come from it; safe to delete, or set "
+                                "keep = true"))
         stats.append(PackStat(
             name=name,
-            used=len({e.source for e in used}),
-            entries=len(used),
-            total=len(files),
-            modified=sum(1 for e in used if e.modified),
+            assets=len(used),
+            files=len(files),
             bytes_total=sum(f.stat().st_size for f in files),
             keep=keep,
+            require_note=pack.requires_note,
             has_source=bool(pack.meta),
             has_license=pack.has_license,
         ))
 
     return issues, stats
-
-
-def apply_fixes(cfg: Config, entries: list[Entry], issues: list[Issue]) -> list[str]:
-    by_dest = {e.dest: e for e in entries}
-    done: list[str] = []
-    for issue in issues:
-        if not issue.fix:
-            continue
-        entry = by_dest.get(issue.path)
-        if entry is None:
-            continue
-        if issue.code == "missing-dest":
-            materialize(cfg, entry)
-            done.append(f"re-materialized {issue.path}")
-        elif issue.code == "writable":
-            set_readonly(cfg.root / entry.dest)
-            done.append(f"set read-only {issue.path}")
-    return done
 
 
 # --------------------------------------------------------------------------
@@ -540,17 +453,15 @@ def print_stats(stats: list[PackStat]) -> None:
         flags = []
         if s.keep:
             flags.append("keep")
+        if s.require_note:
+            flags.append("require_note")
         if not s.has_source:
             flags.append("no-source")
         if not s.has_license:
             flags.append("no-license")
         suffix = ("  (" + ", ".join(flags) + ")") if flags else ""
-        mod = f", {s.modified} modified" if s.modified else ""
-        if s.entries > s.used:
-            mod += f", {s.entries} derived"
-        usage = f"{s.used}/{s.total}"
-        print(f"  {s.name.ljust(width)}  {usage:>9} files"
-              f"  {human_bytes(s.bytes_total):>9}{mod}{suffix}")
+        print(f"  {s.name.ljust(width)}  {s.assets:>4} assets"
+              f"  {s.files:>5} files  {human_bytes(s.bytes_total):>9}{suffix}")
 
 
 # --------------------------------------------------------------------------
@@ -566,21 +477,17 @@ DEFAULT_CONFIG = """\
 # Downloaded packs, one directory per pack, never edited.
 vendor = "kudo/vendor"
 
-# Append-only record of which vendor files are in use.
+# Which of your files come from which pack, one line per file.
 manifest = "kudo/manifest.jsonl"
 
 # Original zips, kept for provenance. Gitignore these if they get large;
 # they are compressed duplicates of what is already in vendor/.
 archive = "kudo/archive"
 
-# Directories kudo manages in YOUR project. Files here that are not manifest
-# destinations are reported as unaccounted. This is where assets actually
-# ship from, so it stays outside kudo/.
+# Directories kudo audits in YOUR project. Files here that are not in the
+# manifest are reported as unaccounted. This is where assets actually ship
+# from, so it stays outside kudo/.
 roots = ["assets"]
-
-# "copy" (safe everywhere) or "symlink" (no duplication, needs Developer Mode
-# on Windows and -h/-L flags when packaging).
-mode = "copy"
 
 credits_output = "CREDITS.md"
 
@@ -598,13 +505,25 @@ license = {license}          # SPDX identifier, or LicenseRef-custom
 acquired = {acquired}
 version = {version}
 {extra}\
+{require_note}
 # attribution = "Kenney (kenney.nl)"   # if the author asks for exact wording
 # keep = true                          # hold an unused pack without nagging
 """
 
+REQUIRE_NOTE_ON = (
+    "require_note = true                   # every asset from this pack says what was changed"
+)
+REQUIRE_NOTE_OFF = (
+    "# require_note = true                 # when the license asks to indicate changes (CC BY)"
+)
+
 
 def toml_str(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def license_requires_note(license_id: str) -> bool:
+    return license_id.upper().replace(" ", "-").startswith("CC-BY")
 
 
 def cmd_init(args) -> int:
@@ -635,8 +554,8 @@ def cmd_init(args) -> int:
     print(f"  {CONFIG_NAME}")
     print(f"  {cfg.vendor}/       downloaded packs, never edited")
     print(f"  {cfg.archive}/      original zips")
-    print(f"  {cfg.manifest}   what you actually use")
-    print(f"  {'/, '.join(cfg.roots)}/             where assets land")
+    print(f"  {cfg.manifest}   which of your files come from which pack")
+    print(f"  {'/, '.join(cfg.roots)}/             where your assets live")
     return EXIT_OK
 
 
@@ -674,6 +593,7 @@ def cmd_import(args) -> int:
             extra += ("# archive_url = \"https://...\"   # direct zip link, for "
                       "'kudo fetch'\n")
 
+    require_note = license_requires_note(args.license or "")
     (dest / SOURCE_NAME).write_text(SOURCE_TEMPLATE.format(
         name=toml_str(args.title or name),
         author=toml_str(args.author or "FIXME"),
@@ -682,12 +602,16 @@ def cmd_import(args) -> int:
         acquired=toml_str(date.today().isoformat()),
         version=toml_str(args.pack_version or ""),
         extra=extra,
+        require_note=REQUIRE_NOTE_ON if require_note else REQUIRE_NOTE_OFF,
     ), encoding="utf-8")
 
     count = len(pack_files(load_pack(cfg, name)))
     print(f"imported {count} files into {cfg.vendor}/{name}/")
     if archived:
         print(f"archived original to {cfg.archive}/{archived}")
+    if require_note:
+        print(f"{args.license} asks to indicate changes: require_note = true, so "
+              "every asset from this pack needs a --note")
     if not (args.author and args.url and args.license):
         print(f"\nFill in {cfg.vendor}/{name}/{SOURCE_NAME} now, while you still")
         print("have the download page open. Add the LICENSE file if the zip lacked one.")
@@ -697,101 +621,32 @@ def cmd_import(args) -> int:
 def cmd_add(args) -> int:
     cfg = load_config()
     entries = load_manifest(cfg)
+    pack = resolve_pack(cfg, args.pack)
+    note = args.note or ""
+    if pack.requires_note and not note:
+        raise KudoError(
+            f"pack '{pack.name}' sets require_note in its {SOURCE_NAME}; say "
+            "what was changed with --note"
+        )
 
-    # Accept either a vendor-relative path or a real path (so tab-completion works).
-    source = None
-    if not Path(args.source).is_absolute() and (cfg.vendor_dir / args.source).is_file():
-        source = args.source
-    elif Path(args.source).is_file():
-        resolved = Path(os.path.abspath(str(Path(args.source))))
-        try:
-            source = str(resolved.relative_to(os.path.abspath(str(cfg.vendor_dir))))
-        except ValueError:
+    taken = {e.dest for e in entries}
+    today = date.today().isoformat()
+    added: list[Entry] = []
+    for arg in args.dest:
+        dest = new_dest(cfg, arg, taken)
+        if not (cfg.root / dest).is_file():
             raise KudoError(
-                f"{args.source} is not inside {cfg.vendor}/. Third-party files must "
-                f"be imported first: kudo import <zip> <name>"
-            ) from None
-    if source is None:
-        raise KudoError(f"no such vendor file: {cfg.vendor}/{args.source}")
-    source = source.replace(os.sep, "/")
-
-    abs_src = cfg.vendor_dir / source
-    if load_pack(cfg, source.split("/", 1)[0]) is None:
-        raise KudoError(f"'{source}' is not inside a vendor pack directory")
-
-    dest = rel_to_root(cfg, Path(args.dest))
-    if dest.startswith(".."):
-        raise KudoError(f"destination must be inside the project, got {args.dest}")
-    if dest == cfg.vendor or dest.startswith(cfg.vendor + "/"):
-        raise KudoError(f"destination cannot be inside {cfg.vendor}/; that would "
-                        "overwrite the pristine copy")
-    if any(e.dest == dest for e in entries):
-        raise KudoError(f"{dest} is already in the manifest")
-    if not any(dest == r or dest.startswith(r.rstrip("/") + "/") for r in cfg.roots):
-        print(f"warning: {dest} is outside the managed roots {cfg.roots};"
-              " the linter will not audit it", file=sys.stderr)
-
-    entry = Entry(
-        source=source,
-        dest=dest,
-        source_hash=hash_file(abs_src),
-        modified=args.modified,
-        note=args.note or "",
-        added=date.today().isoformat(),
-    )
-
-    if args.modified:
-        target = cfg.root / dest
-        if not target.exists():
-            raise KudoError(
-                f"{dest} does not exist. For a modified asset, put your version "
-                "in place first; kudo records it, it does not create it."
+                f"{dest} does not exist. Put the file in place first; kudo "
+                "records it, it does not create it."
             )
-    else:
-        materialize(cfg, entry)
+        taken.add(dest)
+        added.append(Entry(dest=dest, pack=pack.name, note=note, added=today))
 
-    append_entry(cfg, entry)
-    verb = "recorded" if args.modified else ("linked" if cfg.mode == "symlink" else "copied")
-    print(f"{verb} {dest}  <-  {cfg.vendor}/{source}")
-    if args.modified and not entry.note:
-        print("note: no --note given; CC BY requires indicating that changes were made")
+    rewrite_manifest(cfg, entries + added)
+    for e in added:
+        warn_outside_roots(cfg, e.dest)
+        print(f"recorded {e.dest}  <-  {pack.name}")
     return EXIT_OK
-
-
-def cmd_sync(args) -> int:
-    cfg = load_config()
-    return do_sync(cfg, load_manifest(cfg))
-
-
-def do_sync(cfg: Config, entries: list[Entry]) -> int:
-    created = restored = skipped = 0
-    problems = 0
-    for e in entries:
-        src = cfg.vendor_dir / e.source
-        dst = cfg.root / e.dest
-        if e.modified:
-            if not dst.exists():
-                print(f"error: {e.dest} is modified and missing; restore it from "
-                      "version control", file=sys.stderr)
-                problems += 1
-            continue
-        if not src.is_file():
-            print(f"error: missing vendor source {cfg.vendor}/{e.source}", file=sys.stderr)
-            problems += 1
-            continue
-        existed = dst.exists() or dst.is_symlink()
-        if existed and not dst.is_symlink() and hash_file(dst) == e.source_hash:
-            set_readonly(dst)
-            skipped += 1
-            continue
-        materialize(cfg, e)
-        if existed:
-            restored += 1
-        else:
-            created += 1
-    print(f"sync: {created} created, {restored} restored, {skipped} unchanged, "
-          f"{sum(1 for e in entries if e.modified)} modified (left alone)")
-    return EXIT_DRIFT if problems else EXIT_OK
 
 
 def cmd_check(args) -> int:
@@ -799,24 +654,16 @@ def cmd_check(args) -> int:
     entries = load_manifest(cfg)
     issues, stats = run_checks(cfg, entries, deep=args.archives)
 
-    fixed: list[str] = []
-    if args.fix:
-        fixed = apply_fixes(cfg, entries, issues)
-        if fixed:
-            issues, stats = run_checks(cfg, entries, deep=args.archives)
-
     errors = [i for i in issues if i.level == "error"]
     warns = [i for i in issues if i.level == "warn"]
 
     if args.json:
         print(json.dumps({
             "ok": not errors,
-            "fixed": fixed,
             "issues": [asdict(i) for i in issues],
             "packs": [asdict(s) for s in stats],
             "totals": {
                 "entries": len(entries),
-                "modified": sum(1 for e in entries if e.modified),
                 "packs": len(stats),
                 "errors": len(errors),
                 "warnings": len(warns),
@@ -824,8 +671,6 @@ def cmd_check(args) -> int:
         }, indent=2))
         return EXIT_DRIFT if errors else EXIT_OK
 
-    for line in fixed:
-        print(f"  fixed  {line}")
     if errors:
         print(f"\n{len(errors)} error(s):")
         print_issues(errors)
@@ -848,13 +693,9 @@ def cmd_stats(args) -> int:
     entries = load_manifest(cfg)
     issues, stats = run_checks(cfg, entries)
     print_stats(stats)
-    used = sum(s.used for s in stats)
-    total = sum(s.total for s in stats)
-    derived = sum(s.entries for s in stats)
-    unused = [s.name for s in stats if s.used == 0 and not s.keep]
-    tail = f" producing {derived} assets" if derived != used else ""
-    print(f"\n{used} of {total} vendored files in use across {len(stats)} packs"
-          f"{tail}  ({sum(1 for e in entries if e.modified)} modified)")
+    in_use = sum(1 for s in stats if s.assets)
+    unused = [s.name for s in stats if s.assets == 0 and not s.keep]
+    print(f"\n{len(entries)} assets from {in_use} of {len(stats)} packs")
     if unused:
         print(f"unused: {', '.join(unused)}")
     errs = sum(1 for i in issues if i.level == "error")
@@ -871,79 +712,75 @@ def _find(entries: list[Entry], dest: str, cfg: Config) -> Entry:
     raise KudoError(f"{dest} is not in the manifest")
 
 
-def cmd_bless(args) -> int:
-    cfg = load_config()
-    entries = load_manifest(cfg)
-    entry = _find(entries, args.dest, cfg)
-    if not entry.modified:
-        raise KudoError(f"{entry.dest} is not marked modified; use 'kudo edit' first")
-    if not args.upstream and not args.note:
-        raise KudoError("nothing to bless; pass --upstream and/or --note")
-    if args.upstream:
-        src = cfg.vendor_dir / entry.source
-        if not src.is_file():
-            raise KudoError(f"vendor source {entry.source} is missing")
-        entry.source_hash = hash_file(src)
-    if args.note:
-        entry.note = args.note
-    rewrite_manifest(cfg, entries)
-    print(f"blessed {entry.dest}")
-    if args.upstream:
-        print(f"  and accepted the current {cfg.vendor}/{entry.source} as its basis")
-    return EXIT_OK
+def _find_all(entries: list[Entry], dests: list[str], cfg: Config) -> list[Entry]:
+    return list({e.dest: e for e in (_find(entries, d, cfg) for d in dests)}.values())
 
 
-def cmd_edit(args) -> int:
+def cmd_note(args) -> int:
     cfg = load_config()
     entries = load_manifest(cfg)
-    entry = _find(entries, args.dest, cfg)
-    target = cfg.root / entry.dest
-    if entry.modified:
-        set_writable(target)
-        print(f"{entry.dest} is already marked modified; unlocked")
-        return EXIT_OK
-    if target.is_symlink():
-        real = target.resolve()
-        target.unlink()
-        shutil.copy2(real, target)
-        print(f"replaced symlink with a real copy (edits would have written into "
-              f"{cfg.vendor}/)")
-    entry.modified = True
-    entry.note = args.note or entry.note
-    if target.exists():
-        set_writable(target)
+    found = _find_all(entries, args.dest, cfg)
+    for entry in found:
+        entry.note = args.text
     rewrite_manifest(cfg, entries)
-    print(f"{entry.dest} is now writable and marked modified")
-    if not entry.note:
-        print("add a note with 'kudo bless --note' once you are done")
+    for entry in found:
+        print(f"{entry.dest}: {args.text or '(no note)'}")
     return EXIT_OK
 
 
 def cmd_rm(args) -> int:
     cfg = load_config()
     entries = load_manifest(cfg)
-    entry = _find(entries, args.dest, cfg)
-    if entry.modified and not args.force:
-        raise KudoError(
-            f"{entry.dest} is a modified asset; deleting it loses your work. "
-            "Pass --force if you mean it."
-        )
-    if not args.keep_file:
-        unlink_dest(cfg, entry)
-    entries.remove(entry)
+    found = _find_all(entries, args.dest, cfg)
+    for entry in found:
+        entries.remove(entry)
     rewrite_manifest(cfg, entries)
-    remaining = sum(1 for e in entries if e.pack == entry.pack)
-    print(f"removed {entry.dest}")
-    if remaining == 0:
-        print(f"{cfg.vendor}/{entry.pack} now has no files in use; "
-              f"delete it or set keep = true in its {SOURCE_NAME}")
+    for entry in found:
+        target = cfg.root / entry.dest
+        if args.delete and (target.is_file() or target.is_symlink()):
+            target.unlink()
+            print(f"removed {entry.dest} and deleted the file")
+        else:
+            print(f"removed {entry.dest}")
+    for name in sorted({e.pack for e in found}):
+        if not any(e.pack == name for e in entries):
+            print(f"{cfg.vendor}/{name} now has no assets in use; "
+                  f"delete it or set keep = true in its {SOURCE_NAME}")
+    return EXIT_OK
+
+
+def cmd_mv(args) -> int:
+    cfg = load_config()
+    entries = load_manifest(cfg)
+    entry = _find(entries, args.old, cfg)
+    old = entry.dest
+
+    target = args.new
+    if Path(target).is_dir():
+        target = os.path.join(target, Path(old).name)
+    new = new_dest(cfg, target, {e.dest for e in entries})
+
+    src = cfg.root / old
+    dst = cfg.root / new
+    moved = src.is_file() or src.is_symlink()
+    if moved:
+        if dst.exists() or dst.is_symlink():
+            raise KudoError(f"{new} already exists")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+    elif not dst.is_file():
+        raise KudoError(f"neither {old} nor {new} exists")
+
+    entry.dest = new
+    rewrite_manifest(cfg, entries)
+    warn_outside_roots(cfg, new)
+    print(f"{'moved' if moved else 'followed'} {old}  ->  {new}")
     return EXIT_OK
 
 
 
 def cmd_fetch(args) -> int:
     cfg = load_config()
-    entries = load_manifest(cfg)
     packs = all_packs(cfg)
     if args.packs:
         by_name = {p.name: p for p in packs}
@@ -1004,13 +841,7 @@ def cmd_fetch(args) -> int:
     if args.restore:
         for pack in fetched:
             print()
-            rc = cmd_restore(argparse.Namespace(
-                pack=pack.name, force=False, dry_run=False, no_sync=True))
-            if rc != EXIT_OK:
-                problems += 1
-        if fetched:
-            print()
-            do_sync(cfg, load_manifest(cfg))
+            cmd_restore(argparse.Namespace(pack=pack.name, force=False, dry_run=False))
 
     if not fetched and not manual and not problems:
         print("nothing to fetch; every archive is already present")
@@ -1041,15 +872,10 @@ def cmd_restore(args) -> int:
                 "with unknown content. Pass --force if you trust this zip."
             )
 
-    used = [e for e in entries if e.pack == args.pack]
-    before = {}
-    for e in used:
-        src = cfg.vendor_dir / e.source
-        before[e.source] = hash_file(src) if src.is_file() else None
-
     if args.dry_run:
+        used = sum(1 for e in entries if e.pack == args.pack)
         print(f"would re-extract {rel_to_root(cfg, arc)} over "
-              f"{cfg.vendor}/{args.pack}/ ({len(used)} entries depend on it)")
+              f"{cfg.vendor}/{args.pack}/ ({used} assets come from it)")
         return EXIT_OK
 
     # SOURCE.toml is ours, not the zip's. Everything else is replaced.
@@ -1061,35 +887,11 @@ def cmd_restore(args) -> int:
         (pack.dir / SOURCE_NAME).write_bytes(source_toml)
 
     print(f"restored {cfg.vendor}/{args.pack}/ from {rel_to_root(cfg, arc)}")
+    return EXIT_OK
 
-    # Report per source file, not per entry: one tileset can back many slices.
-    by_source: dict[str, list[Entry]] = {}
-    for e in used:
-        by_source.setdefault(e.source, []).append(e)
 
-    repaired = gone = still = 0
-    for source, deps in sorted(by_source.items()):
-        expected = deps[0].source_hash
-        suffix = f" ({len(deps)} derived)" if len(deps) > 1 else ""
-        src = cfg.vendor_dir / source
-        if not src.is_file():
-            print(f"  gone      {source} (not in the archive){suffix}")
-            gone += 1
-        elif hash_file(src) == expected:
-            if before[source] != expected:
-                print(f"  repaired  {source}{suffix}")
-                repaired += 1
-        else:
-            print(f"  differs   {source} (archive does not match the recorded "
-                  f"hash){suffix}")
-            still += 1
-    if by_source:
-        print(f"{repaired} repaired, {still} still differing, {gone} missing, "
-              f"of {len(by_source)} vendor file(s) in use")
-    if not args.no_sync:
-        print()
-        return do_sync(cfg, entries)
-    return EXIT_DRIFT if (still or gone) else EXIT_OK
+def distinct_notes(used: list[Entry]) -> list[str]:
+    return list(dict.fromkeys(e.note for e in used if e.note))
 
 
 def render_markdown(cfg: Config, groups: list[tuple[Pack, list[Entry]]]) -> str:
@@ -1109,14 +911,13 @@ def render_markdown(cfg: Config, groups: list[tuple[Pack, list[Entry]]]) -> str:
         if bits:
             out.append("")
             out.append("  \n".join(bits))
-        mods = [e for e in used if e.modified]
-        if mods:
+        notes = distinct_notes(used)
+        if notes:
             out.append("")
             out.append("Modified for this project:")
             out.append("")
-            for e in mods:
-                note = f" — {e.note}" if e.note else " — modified"
-                out.append(f"- `{e.dest}`{note}")
+            for note in notes:
+                out.append(f"- {note}")
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 
@@ -1131,8 +932,8 @@ def render_text(cfg: Config, groups: list[tuple[Pack, list[Entry]]]) -> str:
         out.append(line)
         if m.get("url"):
             out.append(f"  {m['url']}")
-        for e in (x for x in used if x.modified):
-            out.append(f"  modified: {e.note or e.dest}")
+        for note in distinct_notes(used):
+            out.append(f"  modified: {note}")
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 
@@ -1148,8 +949,9 @@ def render_json(cfg: Config, groups: list[tuple[Pack, list[Entry]]]) -> str:
             "url": m.get("url"),
             "license": m.get("license"),
             "attribution": pack.credit_line(),
+            "notes": distinct_notes(used),
             "files": [
-                {"path": e.dest, "modified": e.modified, "note": e.note or None}
+                {"path": e.dest, "note": e.note or None}
                 for e in used
             ],
         })
@@ -1192,6 +994,17 @@ def cmd_credits(args) -> int:
     return EXIT_OK
 
 
+def cmd_help(parser: argparse.ArgumentParser, commands: dict, args) -> int:
+    if args.topic is None:
+        parser.print_help()
+    elif args.topic in commands:
+        commands[args.topic].print_help()
+    else:
+        raise KudoError(f"no such command: {args.topic}\n"
+                        f"commands: {', '.join(commands)}")
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------
 # cli
 # --------------------------------------------------------------------------
@@ -1222,19 +1035,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-archive", action="store_true", help="do not keep the original zip")
     s.set_defaults(func=cmd_import)
 
-    s = sub.add_parser("add", help="record a vendor file as used, and materialize it")
-    s.add_argument("source", help="path inside vendor/, e.g. kenney_pack/tiles/block.png")
-    s.add_argument("dest", help="where it lands, e.g. assets/sprites/block.png")
-    s.add_argument("--modified", action="store_true",
-                   help="you supplied a derived version at dest; kudo will not overwrite it")
-    s.add_argument("--note", help="what you changed (required in spirit by CC BY)")
+    s = sub.add_parser("add", help="record that files of yours come from a vendor pack")
+    s.add_argument("pack", help="vendor pack name, or the path of its directory")
+    s.add_argument("dest", nargs="+",
+                   help="a file already in place, e.g. assets/sprites/block.png")
+    s.add_argument("--note", help="what you changed; required when the pack's "
+                   "SOURCE.toml sets require_note")
     s.set_defaults(func=cmd_add)
 
-    s = sub.add_parser("sync", help="make the working tree match the manifest")
-    s.set_defaults(func=cmd_sync)
-
     s = sub.add_parser("check", help="verify the tree against the manifest")
-    s.add_argument("--fix", action="store_true", help="repair the mechanical failures")
     s.add_argument("--json", action="store_true")
     s.add_argument("--stats", action="store_true", help="also print per-pack usage")
     s.add_argument("--archives", action="store_true",
@@ -1244,28 +1053,25 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("stats", help="per-pack usage report (always exits 0)")
     s.set_defaults(func=cmd_stats)
 
-    s = sub.add_parser("bless", help="set the note of a modified asset, or accept a new vendor basis for it")
-    s.add_argument("dest")
-    s.add_argument("--upstream", action="store_true",
-                   help="also accept the current vendor file as its basis")
-    s.add_argument("--note")
-    s.set_defaults(func=cmd_bless)
+    s = sub.add_parser("note", help="set the note of recorded assets")
+    s.add_argument("text", help="what you changed; empty clears it")
+    s.add_argument("dest", nargs="+")
+    s.set_defaults(func=cmd_note)
 
-    s = sub.add_parser("edit", help="mark an asset modified and unlock it for editing")
-    s.add_argument("dest")
-    s.add_argument("--note")
-    s.set_defaults(func=cmd_edit)
+    s = sub.add_parser("mv", help="rename a recorded asset, or follow a rename already made")
+    s.add_argument("old")
+    s.add_argument("new", help="new path, or a directory to move it into")
+    s.set_defaults(func=cmd_mv)
 
-    s = sub.add_parser("rm", help="drop an entry and its destination")
-    s.add_argument("dest")
-    s.add_argument("--force", action="store_true", help="allow removing a modified asset")
-    s.add_argument("--keep-file", action="store_true", help="leave the file on disk")
+    s = sub.add_parser("rm", help="drop entries from the manifest")
+    s.add_argument("dest", nargs="+")
+    s.add_argument("--delete", action="store_true", help="also delete the files")
     s.set_defaults(func=cmd_rm)
 
     s = sub.add_parser("fetch", help="download missing archives from archive_url")
     s.add_argument("packs", nargs="*", help="pack names (default: all with a missing archive)")
     s.add_argument("--restore", action="store_true",
-                   help="also re-extract vendor content and sync destinations")
+                   help="also re-extract vendor content")
     s.add_argument("--force", action="store_true", help="re-download even if present")
     s.add_argument("--timeout", type=int, default=120)
     s.set_defaults(func=cmd_fetch)
@@ -1275,8 +1081,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--force", action="store_true",
                    help="restore even if the archive hash does not match")
     s.add_argument("--dry-run", action="store_true")
-    s.add_argument("--no-sync", action="store_true",
-                   help="do not re-materialize destinations afterwards")
     s.set_defaults(func=cmd_restore)
 
     s = sub.add_parser("credits", help="generate the attribution list")
@@ -1284,6 +1088,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-o", "--output", help="path, or - for stdout")
     s.add_argument("--force", action="store_true", help="generate even if check fails")
     s.set_defaults(func=cmd_credits)
+
+    s = sub.add_parser("help", help="show this list, or the options of one command")
+    s.add_argument("topic", nargs="?", metavar="command")
+    s.set_defaults(func=lambda args: cmd_help(p, sub.choices, args))
 
     return p
 
