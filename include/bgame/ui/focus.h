@@ -141,6 +141,9 @@ bgame_ui_focus_route_pointer(uint32_t actions);
 bool
 bgame_ui_focus_move(bgame_ui_focus_dir_t dir);
 
+bool
+bgame_ui_focus_move_as(bgame_ui_focus_dir_t dir, bgame_ui_focus_cause_t cause);
+
 /*! Focus an element by id, 0 for none */
 void
 bgame_ui_focus_set(bgame_ui_id_t id);

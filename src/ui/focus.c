@@ -621,18 +621,18 @@ bgame_ui_focus_route_pointer(uint32_t actions) {
 }
 
 bool
-bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
+bgame_ui_focus_move_as(bgame_ui_focus_dir_t dir, bgame_ui_focus_cause_t cause) {
 	focus_state_t* state = &bgame_ui_focus_state;
 	focus_tree_t* tree = state->previous;
 	if (tree == NULL) { return false; }
-	set_mode_navigation();
+	if (cause == BGAME_UI_FOCUS_CAUSE_NAVIGATION) { set_mode_navigation(); }
 	if (is_leaving(state->focused)) { return false; }
 
 	focus_node_t* cur = find_node(tree, state->focused);
 	if (!is_focusable(cur)) {
 		focus_node_t* target = resolve_into(tree, &tree->root, NULL);
 		if (target == NULL) { return false; }
-		write_focus(target->id, BGAME_UI_FOCUS_CAUSE_NAVIGATION);
+		write_focus(target->id, cause);
 		return true;
 	}
 
@@ -686,8 +686,13 @@ bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
 	}
 
 	if (target == NULL) { return false; }
-	write_focus(target->id, BGAME_UI_FOCUS_CAUSE_NAVIGATION);
+	write_focus(target->id, cause);
 	return true;
+}
+
+bool
+bgame_ui_focus_move(bgame_ui_focus_dir_t dir) {
+	return bgame_ui_focus_move_as(dir, BGAME_UI_FOCUS_CAUSE_NAVIGATION);
 }
 
 void
