@@ -6,6 +6,13 @@
 #include <bhamt.h>
 
 typedef struct bgame_ui_node_s bgame_ui_node_t;
+typedef struct bgame_ui_problem_s bgame_ui_problem_t;
+
+struct bgame_ui_problem_s {
+	bgame_ui_inspect_problem_t info;
+	bgame_ui_node_t* node;
+	bgame_ui_problem_t* next_reported;
+};
 
 typedef struct {
 	bgame_ui_rect_t initial;
@@ -41,6 +48,8 @@ struct bgame_ui_node_s {
 	bgame_ui_node_t* next_floating;
 	bgame_ui_node_t* next_transition;
 	int depth;
+	int num_duplicates;
+	bgame_ui_problem_t* problems;
 
 	// Layout
 	float min_size[2];
@@ -88,6 +97,9 @@ typedef struct {
 	const bgame_ui_id_t* over;
 	int num_over;
 	bgame_ui_frame_t input;
+	bgame_ui_problem_t* problems;
+	int num_problems;
+	int num_flagged_nodes;
 } bgame_ui_tree_t;
 
 /*! Last frame's tree, NULL before the first frame */
@@ -108,6 +120,12 @@ bgame_ui_inspect_highlight(void);
 
 bool
 bgame_ui_inspect_frame(const bgame_ui_frame_t* input, const bgame_ui_id_t* over, int num_over);
+
+bool
+bgame_ui_inspect_active(void);
+
+void
+bgame_ui_report(bgame_ui_loc_t loc, const char* message);
 
 // Focus hooks
 

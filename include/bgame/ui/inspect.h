@@ -72,6 +72,13 @@ bool
 bgame_ui_inspect_open(bgame_ui_loc_t loc);
 
 typedef struct bgame_ui_inspect_node_s bgame_ui_inspect_node_t;
+typedef struct bgame_ui_inspect_problem_s bgame_ui_inspect_problem_t;
+
+struct bgame_ui_inspect_problem_s {
+	const char* message;
+	bgame_ui_loc_t loc;
+	const bgame_ui_inspect_problem_t* next;
+};
 
 /*! An element of last frame's tree */
 struct bgame_ui_inspect_node_s {
@@ -103,6 +110,8 @@ struct bgame_ui_inspect_node_s {
 	bgame_ui_rect_t clip;
 	/*! NULL for an element without a transition */
 	const bgame_ui_transition_state_t* transition;
+	const bgame_ui_inspect_problem_t* problems;
+	int num_problems;
 };
 
 /*! The children of a node, in declaration order */

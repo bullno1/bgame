@@ -3,6 +3,7 @@
 #include <bgame/ui/focus.h>
 #include <bgame/reloadable.h>
 #include <bfmt_log.h>
+#include "internal.h"
 
 typedef struct {
 	bgame_ui_id_t current;
@@ -34,11 +35,11 @@ bgame_ui_modal_close(void) {
 	bgame_ui_id_t id = *bgame_ui_peek_ctx(modal_ctx);
 	if (id == 0) { id = state->current; }
 	if (id == 0) {
-		BFMT_ERROR("No modal to close");
+		bgame_ui_report((bgame_ui_loc_t){ 0 }, "No modal to close");
 		return;
 	}
 	if (id != state->current) {
-		BFMT_ERROR("Closing a modal that is not the open one");
+		bgame_ui_report((bgame_ui_loc_t){ 0 }, "Closing a modal that is not the open one");
 		return;
 	}
 	state->closing = true;

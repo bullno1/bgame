@@ -569,9 +569,20 @@ bgame_ui_focus_within(void) {
 }
 
 bool
-bgame_ui_focus_action(uint32_t actions) {
+bgame_ui_focus_action_at(bgame_ui_loc_t loc, uint32_t actions) {
 	focus_state_t* state = &bgame_ui_focus_state;
 	if (state->open == NULL) { return false; }
+
+	uint32_t unclaimed = actions & ~state->open->claims;
+	if (state->open->parent == NULL) {
+		bgame_ui_report(loc, "Action queried outside of a focus element");
+	} else if (unclaimed != 0) {
+		bgame_ui_report(loc, bgame_print(
+			"Action 0x", bfmt(unclaimed, { .base = BFMT_BASE_HEX }),
+			" queried without being claimed by the open focus element"
+		).chars);
+	}
+
 	for (int bit = 0; bit < 32; ++bit) {
 		if ((actions & (1u << bit)) && state->routed[bit] == state->open->id) { return true; }
 	}

@@ -1,7 +1,11 @@
 #include <bgame/ui/inspect.h>
 #include <bgame/entrypoint.h>
+#include <bgame/allocator/frame.h>
 #include <dcimgui.h>
 #include <inttypes.h>
+
+#define PROBLEM_COLOR ((ImVec4){ 1.f, 0.35f, 0.35f, 1.f })
+#define PROBLEM_INSIDE_COLOR ((ImVec4){ 1.f, 0.7f, 0.3f, 1.f })
 
 // Per frame: the row under the pointer
 static bgame_ui_id_t ui_inspect_imgui_hovered = 0;
@@ -31,8 +35,17 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 	if (node->first_child == NULL) { flags |= ImGuiTreeNodeFlags_Leaf; }
 	if (node->id == selected) { flags |= ImGuiTreeNodeFlags_Selected; }
 
-	// What a composite declares is dimmed, as a pick skips it
-	if (node->owner != 0) { ImGui_PushStyleColorImVec4(ImGuiCol_Text, *ImGui_GetStyleColorVec4(ImGuiCol_TextDisabled)); }
+	bool colored = true;
+	if (node->problems != NULL) {
+		ImGui_PushStyleColorImVec4(ImGuiCol_Text, PROBLEM_COLOR);
+	} else if (node->num_problems > 0) {
+		ImGui_PushStyleColorImVec4(ImGuiCol_Text, PROBLEM_INSIDE_COLOR);
+	} else if (node->owner != 0) {
+		ImGui_PushStyleColorImVec4(ImGuiCol_Text, *ImGui_GetStyleColorVec4(ImGuiCol_TextDisabled));
+	} else {
+		colored = false;
+	}
+
 	// The id is the tree key, since the node itself is new every frame
 	bool open = ImGui_TreeNodeExPtr(
 		(const void*)(uintptr_t)node->id, flags,
@@ -40,7 +53,7 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 		node->name != NULL ? node->name : "(anonymous)", node->index,
 		content_name(node->decl)
 	);
-	if (node->owner != 0) { ImGui_PopStyleColor(); }
+	if (colored) { ImGui_PopStyleColor(); }
 	if (ImGui_IsItemHovered(0)) { ui_inspect_imgui_hovered = node->id; }
 	if (ImGui_IsItemClicked()) { bgame_ui_inspect_select(selected == node->id ? 0 : node->id); }
 
@@ -49,6 +62,34 @@ draw_node(const bgame_ui_inspect_node_t* node) {
 			draw_node(child);
 		}
 		ImGui_TreePop();
+	}
+}
+
+static void
+draw_problems(const bgame_ui_inspect_node_t* tree) {
+	if (tree->num_problems == 0) { return; }
+	ImGui_PushStyleColorImVec4(ImGuiCol_Text, PROBLEM_COLOR);
+	ImGui_SeparatorText("Problems");
+	ImGui_PopStyleColor();
+	for (int i = 0; i <= tree->num_descendants; ++i) {
+		const bgame_ui_inspect_node_t* node = &tree[i];
+		int ordinal = 0;
+		ImGui_PushIDPtr((const void*)(uintptr_t)node->id);
+		for (const bgame_ui_inspect_problem_t* problem = node->problems; problem != NULL; problem = problem->next) {
+			ImGui_PushIDInt(ordinal++);
+			if (ImGui_SmallButton("Open")) { bgame_ui_inspect_open(problem->loc); }
+			ImGui_SameLine();
+			bgame_str_t label = bgame_print(
+				i == 0 ? "(root)" : (node->name != NULL ? node->name : "(anonymous)"),
+				" #", node->index, ": ", problem->message
+			);
+			if (ImGui_SelectableEx(label.chars, node->id != 0 && node->id == bgame_ui_inspect_selected(), 0, (ImVec2){ 0.f, 0.f })) {
+				bgame_ui_inspect_select(node->id);
+			}
+			if (ImGui_IsItemHovered(0)) { ui_inspect_imgui_hovered = node->id; }
+			ImGui_PopID();
+		}
+		ImGui_PopID();
 	}
 }
 
@@ -72,6 +113,17 @@ static void
 draw_details(const bgame_ui_inspect_node_t* tree, const bgame_ui_inspect_node_t* node) {
 	const bgame_ui_element_t* decl = node->decl;
 	ImGui_SeparatorText(node->name != NULL ? node->name : "(anonymous)");
+
+	int ordinal = 0;
+	for (const bgame_ui_inspect_problem_t* problem = node->problems; problem != NULL; problem = problem->next) {
+		ImGui_PushIDInt(ordinal++);
+		ImGui_PushStyleColorImVec4(ImGuiCol_Text, PROBLEM_COLOR);
+		ImGui_TextWrapped("%s", problem->message);
+		ImGui_PopStyleColor();
+		draw_loc("Problem", problem->loc);
+		ImGui_PopID();
+	}
+
 	draw_loc("Source", node->loc);
 	draw_loc("Defined", node->def);
 	if (node->outlet != NULL) { ImGui_LabelText("Outlet", "%s", node->outlet); }
@@ -121,6 +173,7 @@ bgame_ui_inspect(void) {
 	ImGui_Text("%d elements, %d commands", tree->num_descendants, num_commands);
 
 	ui_inspect_imgui_hovered = 0;
+	draw_problems(tree);
 	if (ImGui_BeginChild("Tree", (ImVec2){ 0.f, 300.f }, ImGuiChildFlags_ResizeY, 0)) {
 		BGAME_UI_INSPECT_FOREACH_CHILD(child, tree) {
 			draw_node(child);

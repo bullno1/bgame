@@ -1,5 +1,6 @@
 #include "ui/internal.h"
 #include <bgame/reloadable.h>
+#include <bgame/entrypoint.h>
 #include <bgame/allocator/frame.h>
 #include <bgame/chibihash64.h>
 #include <bgame/chibihash64-stream.h>
@@ -17,6 +18,7 @@
 #define AXIS_X 0
 #define AXIS_Y 1
 #define EPSILON 0.001f
+#define DUPLICATE_SALT "bgame_ui/duplicate"
 
 typedef struct ui_scope_s ui_scope_t;
 
@@ -55,6 +57,7 @@ BGAME_VAR(bgame_ui_tree_t*, ui_current) = NULL;
 BGAME_VAR(bgame_translation_t*, ui_translation) = NULL;
 BGAME_VAR(ui_state_table_t, ui_previous_states) = { 0 };
 BGAME_VAR(ui_state_table_t, ui_current_states) = { 0 };
+BGAME_VAR(uint64_t, ui_problem_hash) = 0;
 // Plain statics on purpose: rebuilt by every bgame_ui_begin
 static ui_ctx_stacks_t ui_ctx_stacks = { 0 };
 static ui_string_table_t ui_frame_strings = { 0 };
@@ -62,7 +65,6 @@ static ui_scope_t ui_root_scope = { 0 };
 static ui_scope_t* ui_scope = NULL;
 static bgame_ui_node_t* ui_open = NULL;
 static bool ui_block_pending = false;
-static bool ui_duplicate_reported = false;
 
 // Plain static on purpose: a reload zeroes it, so its callbacks are never stale
 static struct {
@@ -331,6 +333,41 @@ frame_strcpy(const char* str) {
 	return *slot;
 }
 
+static const char*
+loc_file(bgame_ui_loc_t loc) {
+	return loc.file != NULL ? bgame_project_file(loc.file) : "?";
+}
+
+void
+bgame_ui_report(bgame_ui_loc_t loc, const char* message) {
+	if (ui_open == NULL) {
+		if (loc.file != NULL) {
+			BFMT_ERROR(loc_file(loc), ":", loc.line, ": ", message);
+		} else {
+			BFMT_ERROR(message);
+		}
+		return;
+	}
+
+	bgame_ui_tree_t* tree = ui_current;
+	bgame_ui_node_t* node = ui_open;
+	bgame_ui_problem_t* problem = bgame_alloc_for_frame(sizeof(bgame_ui_problem_t), _Alignof(bgame_ui_problem_t));
+	*problem = (bgame_ui_problem_t){
+		.info = {
+			.message = frame_strcpy(message),
+			.loc = loc.file != NULL ? (bgame_ui_loc_t){ frame_strcpy(loc.file), loc.line } : node->loc,
+			.next = node->problems != NULL ? &node->problems->info : NULL,
+		},
+		.node = node,
+		.next_reported = tree->problems,
+	};
+
+	if (node->problems == NULL) { ++tree->num_flagged_nodes; }
+	node->problems = problem;
+	tree->problems = problem;
+	++tree->num_problems;
+}
+
 bgame_ui_id_t
 bgame_ui__begin(bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	return bgame_ui__begin_at((bgame_ui_loc_t){ 0 }, loc, key);
@@ -350,6 +387,15 @@ bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	if (id == 0) {
 		if (key.name == NULL) { index = (uint64_t)ui_scope->num_anonymous++; }
 		id = bgame_ui_make_id(ui_scope->id, key.name, index);
+	}
+
+	bool is_new;
+	bgame_ui_node_t** slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
+	bgame_ui_node_t* original = NULL;
+	while (!is_new) {
+		if (original == NULL) { original = *slot; }
+		id = bgame_ui_make_id(original->id, DUPLICATE_SALT, (uint64_t)++original->num_duplicates);
+		slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
 	}
 
 	bgame_ui_node_t* node = bgame_alloc_for_frame(sizeof(bgame_ui_node_t), _Alignof(bgame_ui_node_t));
@@ -381,18 +427,17 @@ bgame_ui__begin_at(bgame_ui_loc_t def, bgame_ui_loc_t loc, bgame_ui_key_t key) {
 	}
 	ui_open->last_child = node;
 	++tree->num_nodes;
-
-	bool is_new;
-	bgame_ui_node_t** slot = bhamt_upsert_ex(&tree->index, id, arena, &is_new);
-	if (is_new) {
-		*slot = node;
-	} else if (!ui_duplicate_reported) {
-		BFMT_ERROR("Duplicate UI element ", key.name != NULL ? key.name : "(anonymous)", " #", index);
-		ui_duplicate_reported = true;
-	}
+	*slot = node;
 
 	push_scope(id, node);
 	ui_open = node;
+
+	if (original != NULL) {
+		bgame_ui_report((bgame_ui_loc_t){ 0 }, bgame_print(
+			"Duplicate id, same key as the element at ", loc_file(original->loc), ":", original->loc.line
+		).chars);
+	}
+
 	return id;
 }
 
@@ -426,6 +471,8 @@ bgame_ui__configure(const bgame_ui_element_t* element) {
 
 	if (element->focus.kind != BGAME_UI_FOCUS_NONE) {
 		bgame_ui_focus_open(node->id, &element->focus);
+	} else if (element->focus.flags != 0 || element->focus.claims != 0) {
+		bgame_ui_report((bgame_ui_loc_t){ 0 }, "Focus flags or claims on an element that is neither a target nor a group");
 	}
 
 	ui_block_pending = true;
@@ -1098,7 +1145,7 @@ emit_tree_commands(bgame_ui_tree_t* tree) {
 		compute_node_clips(tree->floating[i], screen);
 	}
 
-	int capacity = tree->num_content + 2 * tree->num_clip + 2 * tree->num_transition + 1;
+	int capacity = tree->num_content + 2 * tree->num_clip + 2 * tree->num_transition + tree->num_flagged_nodes + 1;
 	tree->commands = bgame_alloc_for_frame(
 		sizeof(bgame_ui_command_t) * (size_t)capacity,
 		_Alignof(bgame_ui_command_t)
@@ -1108,6 +1155,14 @@ emit_tree_commands(bgame_ui_tree_t* tree) {
 	emit_node_commands(tree, &tree->root);
 	for (int i = 0; i < tree->num_floating; ++i) {
 		emit_node_commands(tree, tree->floating[i]);
+	}
+
+	if (bgame_ui_inspect_active()) {
+		for (const bgame_ui_problem_t* problem = tree->problems; problem != NULL; problem = problem->next_reported) {
+			const bgame_ui_node_t* node = problem->node;
+			if (problem != node->problems || node->parent == NULL || node->hidden) { continue; }
+			push_command(tree, (bgame_ui_command_t){ .type = BGAME_UI_CMD_REPORT_PROBLEM, .box = node_box(node) });
+		}
 	}
 
 	bgame_ui_node_t* selected = find_node(tree, bgame_ui_inspect_highlight());
@@ -1293,7 +1348,51 @@ bgame_ui_begin(const bgame_ui_frame_t* frame) {
 	ui_root_scope = (ui_scope_t){ .node = &tree->root };
 	ui_scope = &ui_root_scope;
 	ui_open = &tree->root;
-	ui_duplicate_reported = false;
+}
+
+static bool
+problem_eq(const bgame_ui_problem_t* lhs, const bgame_ui_problem_t* rhs) {
+	return lhs->info.loc.line == rhs->info.loc.line
+		&& strcmp(loc_file(lhs->info.loc), loc_file(rhs->info.loc)) == 0
+		&& strcmp(lhs->info.message, rhs->info.message) == 0;
+}
+
+static void
+log_problems(const bgame_ui_tree_t* tree) {
+	uint64_t hash = 0;
+	if (tree->problems != NULL) {
+		ChibiHash64Ctx ctx = chibihash64_init(0);
+		const bgame_ui_problem_t* previous = NULL;
+		for (const bgame_ui_problem_t* problem = tree->problems; problem != NULL; problem = problem->next_reported) {
+			bool repeats = previous != NULL && problem_eq(previous, problem);
+			previous = problem;
+			if (repeats) { continue; }
+			const char* file = loc_file(problem->info.loc);
+			chibihash64_append(&ctx, file, strlen(file) + 1);
+			chibihash64_append(&ctx, &problem->info.loc.line, sizeof(problem->info.loc.line));
+			chibihash64_append(&ctx, problem->info.message, strlen(problem->info.message) + 1);
+		}
+		hash = chibihash64_finish(&ctx);
+		if (hash == 0) { hash = 1; }
+	}
+
+	if (hash == ui_problem_hash) { return; }
+	ui_problem_hash = hash;
+
+	if (tree->problems == NULL) {
+		BFMT_INFO("All UI problems are resolved");
+		return;
+	}
+
+	BFMT_WARN("There are ", tree->num_problems, " UI problems. Check the inspector.");
+	const bgame_ui_problem_t* previous = NULL;
+	for (const bgame_ui_problem_t* problem = tree->problems; problem != NULL; problem = problem->next_reported) {
+		bool repeats = previous != NULL && problem_eq(previous, problem);
+		previous = problem;
+		if (repeats) { continue; }
+
+		BFMT_WARN("  ", loc_file(problem->info.loc), ":", problem->info.loc.line, ": ", problem->info.message);
+	}
 }
 
 void
@@ -1303,14 +1402,17 @@ bgame_ui_end(void) {
 		return;
 	}
 	bgame_ui_tree_t* tree = ui_current;
-	if (ui_open != &tree->root || ui_scope != &ui_root_scope) {
-		BFMT_ERROR("UI frame ended with an element or id still open");
+	if (ui_open != &tree->root) {
+		bgame_ui_report((bgame_ui_loc_t){ 0 }, "An element in this subtree was never closed");
+	} else if (ui_scope != &ui_root_scope) {
+		BFMT_ERROR("UI frame ended with an id still pushed");
 	}
 
 	layout_tree(tree);
 	run_transitions(tree);
 	emit_tree_commands(tree);
 	bgame_ui_focus_end();
+	log_problems(tree);
 
 	ui_previous = tree;
 	ui_scope = NULL;

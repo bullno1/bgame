@@ -116,8 +116,10 @@ bool
 bgame_ui_focus_within(void);
 
 /*! Whether the element was handed any of these actions this frame */
+#define bgame_ui_focus_action BUI_CALL_WITH_LOC(bgame_ui_focus_action_at)
+
 bool
-bgame_ui_focus_action(uint32_t actions);
+bgame_ui_focus_action_at(bgame_ui_loc_t loc, uint32_t actions);
 
 // Feeding input, before the elements
 

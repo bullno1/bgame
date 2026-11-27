@@ -46,6 +46,11 @@ bgame_ui_inspect_highlight(void) {
 	return 0;
 }
 
+bool
+bgame_ui_inspect_active(void) {
+	return ui_inspect_shown || ui_inspect_picking;
+}
+
 void
 bgame_ui_inspect_hover(bgame_ui_id_t id) {
 	ui_inspect_shown = true;
@@ -317,7 +322,15 @@ fill_node(bgame_ui_inspect_node_t* out, const bgame_ui_node_t* node, int depth, 
 		.content = node->content,
 		.clip = node->clip,
 		.transition = node->transition != NULL ? &node->transition_state : NULL,
+		.problems = node->problems != NULL ? &node->problems->info : NULL,
 	};
+
+	for (const bgame_ui_inspect_problem_t* problem = out->problems; problem != NULL; problem = problem->next) {
+		++out->num_problems;
+	}
+	BGAME_UI_INSPECT_FOREACH_CHILD(child, out) {
+		out->num_problems += child->num_problems;
+	}
 }
 
 /*! The children of a node after it, pre-order; returns the number written */

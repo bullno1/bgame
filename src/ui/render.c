@@ -94,6 +94,9 @@ bgame_ui_render(void) {
 			case BGAME_UI_CMD_HIGHLIGHT:
 				draw_highlight(&command->box);
 				break;
+			case BGAME_UI_CMD_REPORT_PROBLEM:
+				draw_highlight_rect(command->box.bounds, cf_make_color_rgba_f(1.f, 0.15f, 0.15f, 1.f), 0.2f);
+				break;
 		}
 	}
 

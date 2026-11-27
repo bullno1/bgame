@@ -497,6 +497,7 @@ typedef enum {
 	BGAME_UI_CMD_POSE_END,
 	/*! The inspector's selection, over everything */
 	BGAME_UI_CMD_HIGHLIGHT,
+	BGAME_UI_CMD_REPORT_PROBLEM,
 } bgame_ui_command_type_t;
 
 typedef struct {
